@@ -20,22 +20,22 @@ export function SettingsPage({ onExport, onImport, onClear }: SettingsPageProps)
     };
 
     return (
-        <div className="pb-20 pt-6 px-4 max-w-md mx-auto min-h-screen bg-gray-50">
-            <h1 className="text-2xl font-bold text-gray-900 mb-6">Settings</h1>
+        <div className="pb-20 pt-6 px-4 max-w-md mx-auto bg-brand-bg">
+            <h1 className="text-2xl font-bold text-text-primary mb-6">Settings</h1>
 
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="bg-brand-surface rounded-xl shadow-sm border border-brand-border overflow-hidden">
                 {/* Export */}
                 <button
                     onClick={onExport}
-                    className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors border-b border-gray-100 text-left"
+                    className="w-full flex items-center justify-between p-4 hover:bg-brand-card transition-colors border-b border-brand-border text-left"
                 >
                     <div className="flex items-center gap-3">
-                        <div className="bg-blue-50 p-2 rounded-lg text-blue-600">
+                        <div className="bg-brand-primary/10 p-2 rounded-lg text-brand-primary">
                             <Download size={20} />
                         </div>
                         <div>
-                            <h3 className="font-medium text-gray-900">Export Data</h3>
-                            <p className="text-xs text-gray-500">Download coupons as JSON</p>
+                            <h3 className="font-medium text-text-primary">Export Data</h3>
+                            <p className="text-xs text-text-muted">Download coupons as JSON</p>
                         </div>
                     </div>
                 </button>
@@ -43,15 +43,15 @@ export function SettingsPage({ onExport, onImport, onClear }: SettingsPageProps)
                 {/* Import */}
                 <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors border-b border-gray-100 text-left"
+                    className="w-full flex items-center justify-between p-4 hover:bg-brand-card transition-colors border-b border-brand-border text-left"
                 >
                     <div className="flex items-center gap-3">
-                        <div className="bg-green-50 p-2 rounded-lg text-green-600">
+                        <div className="bg-status-active/10 p-2 rounded-lg text-status-active">
                             <Upload size={20} />
                         </div>
                         <div>
-                            <h3 className="font-medium text-gray-900">Import Data</h3>
-                            <p className="text-xs text-gray-500">Restore from JSON backup</p>
+                            <h3 className="font-medium text-text-primary">Import Data</h3>
+                            <p className="text-xs text-text-muted">Restore from JSON backup</p>
                         </div>
                     </div>
                 </button>
@@ -66,24 +66,24 @@ export function SettingsPage({ onExport, onImport, onClear }: SettingsPageProps)
                 {/* Clear Data */}
                 <button
                     onClick={onClear}
-                    className="w-full flex items-center justify-between p-4 hover:bg-red-50 transition-colors text-left group"
+                    className="w-full flex items-center justify-between p-4 hover:bg-status-expired/10 transition-colors text-left group"
                 >
                     <div className="flex items-center gap-3">
-                        <div className="bg-red-50 p-2 rounded-lg text-red-600 group-hover:bg-red-100 group-hover:text-red-700">
+                        <div className="bg-status-expired/10 p-2 rounded-lg text-status-expired group-hover:bg-status-expired/20">
                             <Trash2 size={20} />
                         </div>
                         <div>
-                            <h3 className="font-medium text-gray-900 group-hover:text-red-700">Clear All Data</h3>
-                            <p className="text-xs text-gray-500 group-hover:text-red-600">Permanently delete everything</p>
+                            <h3 className="font-medium text-text-primary group-hover:text-status-expired">Clear All Data</h3>
+                            <p className="text-xs text-text-muted group-hover:text-status-expired/80">Permanently delete everything</p>
                         </div>
                     </div>
                 </button>
             </div>
 
-            <div className="mt-8 p-4 bg-blue-50 rounded-xl flex items-start gap-3">
-                <Info className="text-blue-600 shrink-0 mt-0.5" size={20} />
-                <div className="text-sm text-blue-800">
-                    <p className="font-semibold mb-1">About Coupon Wallet</p>
+            <div className="mt-8 p-4 bg-brand-surface rounded-xl flex items-start gap-3 border border-brand-border">
+                <Info className="text-brand-primary shrink-0 mt-0.5" size={20} />
+                <div className="text-sm text-text-secondary">
+                    <p className="font-semibold mb-1 text-text-primary">About Coupon Wallet</p>
                     <p>This is a local-only application. Your data is stored securely in your browser's Local Storage and is never sent to any server.</p>
                 </div>
             </div>

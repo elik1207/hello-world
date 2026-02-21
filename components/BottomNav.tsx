@@ -1,43 +1,117 @@
+import Animated, {
+    useSharedValue,
+    useAnimatedStyle,
+    withSpring,
+    interpolateColor,
+    useDerivedValue,
+} from 'react-native-reanimated';
 import { View, Text, Pressable } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { Wallet, PlusCircle, Settings } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 
-type View = 'wallet' | 'add' | 'settings';
+type NavView = 'wallet' | 'add' | 'settings';
 
 interface BottomNavProps {
-    currentView: View;
-    onChange: (view: View) => void;
+    currentView: NavView;
+    onChange: (view: NavView) => void;
 }
 
-const tabs: { id: View; label: string; Icon: typeof Wallet }[] = [
+const TABS: { id: NavView; label: string; Icon: typeof Wallet }[] = [
     { id: 'wallet', label: 'Wallet', Icon: Wallet },
     { id: 'add', label: 'Add', Icon: PlusCircle },
     { id: 'settings', label: 'Settings', Icon: Settings },
 ];
 
+function NavTab({
+    id,
+    label,
+    Icon,
+    active,
+    onPress,
+}: {
+    id: NavView;
+    label: string;
+    Icon: typeof Wallet;
+    active: boolean;
+    onPress: () => void;
+}) {
+    const scale = useSharedValue(1);
+
+    const animStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: scale.value }],
+    }));
+
+    const handlePress = () => {
+        scale.value = withSpring(0.85, {}, () => {
+            scale.value = withSpring(1);
+        });
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        onPress();
+    };
+
+    return (
+        <Pressable onPress={handlePress} className="flex-1 items-center py-2">
+            <Animated.View style={animStyle} className="items-center gap-1">
+                {active ? (
+                    <LinearGradient
+                        colors={['#6366f1', '#8b5cf6']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={{
+                            borderRadius: 16,
+                            padding: 8,
+                            marginBottom: 2,
+                        }}
+                    >
+                        <Icon size={20} color="#ffffff" strokeWidth={2.2} />
+                    </LinearGradient>
+                ) : (
+                    <View className="p-2 mb-0.5">
+                        <Icon size={20} color="#a0aed4" strokeWidth={1.75} />
+                    </View>
+                )}
+                <Text
+                    style={{
+                        fontSize: 11,
+                        fontWeight: active ? '700' : '400',
+                        color: active ? '#a78bfa' : '#a0aed4',
+                        letterSpacing: 0.3,
+                    }}
+                >
+                    {label}
+                </Text>
+            </Animated.View>
+        </Pressable>
+    );
+}
+
 export function BottomNav({ currentView, onChange }: BottomNavProps) {
     return (
-        <View className="absolute bottom-0 left-0 right-0 flex-row bg-white border-t border-gray-200 pb-6 pt-2">
-            {tabs.map(({ id, label, Icon }) => {
-                const active = currentView === id;
-                return (
-                    <Pressable
-                        key={id}
-                        onPress={() => onChange(id)}
-                        className="flex-1 items-center gap-1 py-1"
-                    >
-                        <Icon
-                            size={22}
-                            color={active ? '#2563eb' : '#9ca3af'}
-                            strokeWidth={active ? 2.5 : 1.75}
-                        />
-                        <Text
-                            className={`text-xs font-medium ${active ? 'text-blue-600' : 'text-gray-400'}`}
-                        >
-                            {label}
-                        </Text>
-                    </Pressable>
-                );
-            })}
+        <View
+            style={{
+                position: 'absolute',
+                bottom: 0,
+                left: 0,
+                right: 0,
+                backgroundColor: '#252849',
+                borderTopWidth: 1,
+                borderTopColor: '#3c4270',
+                paddingBottom: 20,
+                paddingTop: 8,
+                flexDirection: 'row',
+            }}
+        >
+            {TABS.map(({ id, label, Icon }) => (
+                <NavTab
+                    key={id}
+                    id={id}
+                    label={label}
+                    Icon={Icon}
+                    active={currentView === id}
+                    onPress={() => onChange(id)}
+                />
+            ))}
         </View>
     );
 }

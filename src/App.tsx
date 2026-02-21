@@ -7,10 +7,13 @@ import { WalletPage } from './pages/WalletPage';
 import { AddEditPage } from './pages/AddEditPage';
 import { SettingsPage } from './pages/SettingsPage';
 
+import '../global.css';
+
 type View = 'wallet' | 'add' | 'settings';
 
 function App() {
   const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [hasHydrated, setHasHydrated] = useState(false);
   const [view, setView] = useState<View>('wallet');
   const [editingCoupon, setEditingCoupon] = useState<Coupon | undefined>(undefined);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -18,11 +21,13 @@ function App() {
 
   useEffect(() => {
     setCoupons(getCoupons());
+    setHasHydrated(true);
   }, []);
 
   useEffect(() => {
+    if (!hasHydrated) return;
     saveCoupons(coupons);
-  }, [coupons]);
+  }, [coupons, hasHydrated]);
 
   const handleNavChange = (newView: View) => {
     if (newView === 'add') setEditingCoupon(undefined);
@@ -37,6 +42,7 @@ function App() {
       const newCoupon: Coupon = {
         id: crypto.randomUUID(),
         ...data,
+        type: data.type || 'coupon',
         status: 'active',
         createdAt: now,
         updatedAt: now,
@@ -85,7 +91,7 @@ function App() {
 
   return (
     <>
-      <main className="min-h-screen bg-gray-50">
+      <main className="flex-1 bg-brand-bg pb-20 overflow-y-auto min-h-screen">
         {view === 'wallet' && (
           <WalletPage
             coupons={coupons}

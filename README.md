@@ -8,15 +8,15 @@ A personal coupon & discount manager app. Store, organize, and track your coupon
 
 ## Features
 
-- ➕ Add coupons with title, discount (amount or %), store, category, expiry date, and promo code
-- 🗂️ Tabs: Active / Used / Expired
-- 🔍 Search and sort by expiry date
-- ✅ Mark coupons as used / restore to active
-- 🗑️ Delete individual coupons
-- 📤 Export coupons as JSON
-- 📥 Import coupons from JSON
-- 🧹 Clear all data
-- 💾 Persistent local storage (no server needed)
+- 🎨 **Premium Dark Theme**: A stunning, high-contrast dark aesthetic that feels modern and native.
+- 🎁 **General Wallet**: Store not just Coupons, but also Gift Cards (with remaining balances) and one-time Vouchers.
+- ⏳ **Urgency Inbox**: Smartly groups items by expiration (Expiring Soon, This Month, Safe) with visual edge-color indicators.
+- 📊 **Financial Insights**: Tracks your "Trapped Value" (active funds) and "Lost Value" (expired funds).
+- 📷 **Advanced Display**: Visualizes Barcode data and brand Image URLs beautifully on the cards.
+- ➕ **Rich Metadata**: Add Store, Category, Sender, and Event information.
+- 🗂️ **Archive**: Dedicated tab for keeping track of used and expired items.
+- 📤 **Export/Import via JSON**: Backup your state with built-in versioning and schema migrations.
+- 💾 **Local First**: 100% private, persistent local storage (no servers).
 
 ---
 
@@ -78,4 +78,5 @@ App.tsx       # Root component with state management
 
 | Tag | Description |
 |---|---|
+| `v2.0.0` | Phase 2 "WOW" Release (Dark Theme, Urgency Inbox, Insights, Gift Cards) |
 | `v1.0-web` | Original React + Vite web-only version |

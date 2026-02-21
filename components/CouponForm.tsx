@@ -6,7 +6,9 @@ import {
     Pressable,
     ScrollView,
     Alert,
+    SafeAreaView,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import type { Coupon, DiscountType } from '../lib/types';
 
 interface CouponFormProps {
@@ -29,155 +31,180 @@ export function CouponForm({ initialData, onSave, onCancel }: CouponFormProps) {
     const [code, setCode] = useState(initialData?.code ?? '');
 
     const handleSubmit = () => {
-        if (!title.trim()) {
-            Alert.alert('Validation', 'Title is required');
-            return;
-        }
+        if (!title.trim()) { Alert.alert('Validation', 'Title is required'); return; }
         const val = Number(discountValue);
-        if (!discountValue || isNaN(val) || val <= 0) {
-            Alert.alert('Validation', 'Value must be greater than 0');
-            return;
-        }
-        if (discountType === 'percent' && val > 100) {
-            Alert.alert('Validation', 'Percentage cannot exceed 100');
-            return;
-        }
+        if (!discountValue || isNaN(val) || val <= 0) { Alert.alert('Validation', 'Value must be greater than 0'); return; }
+        if (discountType === 'percent' && val > 100) { Alert.alert('Validation', 'Percentage cannot exceed 100'); return; }
         onSave({ title, description, discountType, discountValue: val, currency, expiryDate, store, category, code });
     };
 
-    const inputClass = 'w-full px-4 py-3 rounded-lg border border-gray-300 text-gray-900 bg-white';
-    const labelClass = 'text-sm font-medium text-gray-700 mb-1';
+    const inputStyle = {
+        backgroundColor: '#27305a',
+        borderWidth: 1,
+        borderColor: '#3c4270',
+        borderRadius: 14,
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+        color: '#f8fafc',
+        fontSize: 15,
+    };
+
+    const labelStyle = {
+        fontSize: 12,
+        fontWeight: '600' as const,
+        color: '#dde2f4',
+        marginBottom: 8,
+        letterSpacing: 0.5,
+        textTransform: 'uppercase' as const,
+    };
 
     return (
-        <ScrollView className="p-4" keyboardShouldPersistTaps="handled">
-            <View className="gap-4 pb-8">
-                {/* Title */}
-                <View>
-                    <Text className={labelClass}>Title *</Text>
-                    <TextInput
-                        className={inputClass}
-                        placeholder="e.g. 50₪ off at Super-Pharm"
-                        value={title}
-                        onChangeText={setTitle}
-                        placeholderTextColor="#9ca3af"
-                    />
-                </View>
+        <ScrollView
+            style={{ flex: 1, backgroundColor: '#1a1d38' }}
+            contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
+            keyboardShouldPersistTaps="handled"
+        >
+            {/* Title */}
+            <View style={{ marginBottom: 20 }}>
+                <Text style={labelStyle}>Title *</Text>
+                <TextInput
+                    style={inputStyle}
+                    placeholder="e.g. 50₪ off at Super-Pharm"
+                    placeholderTextColor="#a0aed4"
+                    value={title}
+                    onChangeText={setTitle}
+                />
+            </View>
 
-                {/* Type + Value */}
-                <View className="flex-row gap-3">
-                    <View className="flex-1">
-                        <Text className={labelClass}>Type</Text>
-                        <View className="flex-row rounded-lg border border-gray-300 overflow-hidden">
-                            {(['amount', 'percent'] as DiscountType[]).map((t) => (
+            {/* Type + Value */}
+            <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20 }}>
+                <View style={{ flex: 1 }}>
+                    <Text style={labelStyle}>Type</Text>
+                    <View style={{ flexDirection: 'row', borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: '#3c4270' }}>
+                        {(['amount', 'percent'] as DiscountType[]).map((t) => {
+                            const active = discountType === t;
+                            return (
                                 <Pressable
                                     key={t}
                                     onPress={() => setDiscountType(t)}
-                                    className={`flex-1 py-3 items-center ${discountType === t ? 'bg-blue-600' : 'bg-white'}`}
+                                    style={{ flex: 1, paddingVertical: 14, alignItems: 'center', backgroundColor: active ? '#6366f1' : '#27305a' }}
                                 >
-                                    <Text className={`text-sm font-medium ${discountType === t ? 'text-white' : 'text-gray-700'}`}>
+                                    <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#fff' : '#a0aed4' }}>
                                         {t === 'amount' ? 'Amount' : 'Percent'}
                                     </Text>
                                 </Pressable>
-                            ))}
-                        </View>
-                    </View>
-                    <View className="flex-1">
-                        <Text className={labelClass}>Value *</Text>
-                        <TextInput
-                            className={inputClass}
-                            placeholder="0"
-                            value={discountValue}
-                            onChangeText={setDiscountValue}
-                            keyboardType="decimal-pad"
-                            placeholderTextColor="#9ca3af"
-                        />
+                            );
+                        })}
                     </View>
                 </View>
+                <View style={{ flex: 1 }}>
+                    <Text style={labelStyle}>Value *</Text>
+                    <TextInput
+                        style={inputStyle}
+                        placeholder="0"
+                        placeholderTextColor="#a0aed4"
+                        value={discountValue}
+                        onChangeText={setDiscountValue}
+                        keyboardType="decimal-pad"
+                    />
+                </View>
+            </View>
 
-                {/* Currency (only for amount type) */}
-                {discountType === 'amount' && (
-                    <View>
-                        <Text className={labelClass}>Currency</Text>
-                        <View className="flex-row gap-2">
-                            {['ILS', 'USD', 'EUR', 'GBP'].map((c) => (
+            {/* Currency */}
+            {discountType === 'amount' && (
+                <View style={{ marginBottom: 20 }}>
+                    <Text style={labelStyle}>Currency</Text>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                        {['ILS', 'USD', 'EUR', 'GBP'].map((c) => {
+                            const active = currency === c;
+                            return (
                                 <Pressable
                                     key={c}
                                     onPress={() => setCurrency(c)}
-                                    className={`px-3 py-2 rounded-lg border ${currency === c ? 'bg-blue-600 border-blue-600' : 'bg-white border-gray-300'}`}
+                                    style={{
+                                        paddingHorizontal: 16,
+                                        paddingVertical: 10,
+                                        borderRadius: 12,
+                                        borderWidth: 1,
+                                        borderColor: active ? '#6366f1' : '#3c4270',
+                                        backgroundColor: active ? '#4e48c0' : '#27305a',
+                                    }}
                                 >
-                                    <Text className={`text-sm font-medium ${currency === c ? 'text-white' : 'text-gray-700'}`}>{c}</Text>
+                                    <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#a78bfa' : '#a0aed4' }}>{c}</Text>
                                 </Pressable>
-                            ))}
-                        </View>
-                    </View>
-                )}
-
-                {/* Store + Category */}
-                <View className="flex-row gap-3">
-                    <View className="flex-1">
-                        <Text className={labelClass}>Store</Text>
-                        <TextInput className={inputClass} placeholder="e.g. Fox" value={store} onChangeText={setStore} placeholderTextColor="#9ca3af" />
-                    </View>
-                    <View className="flex-1">
-                        <Text className={labelClass}>Category</Text>
-                        <TextInput className={inputClass} placeholder="e.g. Food" value={category} onChangeText={setCategory} placeholderTextColor="#9ca3af" />
+                            );
+                        })}
                     </View>
                 </View>
+            )}
 
-                {/* Expiry Date */}
-                <View>
-                    <Text className={labelClass}>Expiry Date (YYYY-MM-DD)</Text>
-                    <TextInput
-                        className={inputClass}
-                        placeholder="2025-12-31"
-                        value={expiryDate}
-                        onChangeText={setExpiryDate}
-                        placeholderTextColor="#9ca3af"
-                    />
+            {/* Store + Category */}
+            <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20 }}>
+                <View style={{ flex: 1 }}>
+                    <Text style={labelStyle}>Store</Text>
+                    <TextInput style={inputStyle} placeholder="e.g. Fox" placeholderTextColor="#a0aed4" value={store} onChangeText={setStore} />
                 </View>
-
-                {/* Code */}
-                <View>
-                    <Text className={labelClass}>Code / Barcode</Text>
-                    <TextInput
-                        className={inputClass}
-                        placeholder="Promo Code"
-                        value={code}
-                        onChangeText={setCode}
-                        placeholderTextColor="#9ca3af"
-                    />
+                <View style={{ flex: 1 }}>
+                    <Text style={labelStyle}>Category</Text>
+                    <TextInput style={inputStyle} placeholder="e.g. Food" placeholderTextColor="#a0aed4" value={category} onChangeText={setCategory} />
                 </View>
+            </View>
 
-                {/* Description */}
-                <View>
-                    <Text className={labelClass}>Description</Text>
-                    <TextInput
-                        className={inputClass}
-                        placeholder="Terms & conditions, notes..."
-                        value={description}
-                        onChangeText={setDescription}
-                        multiline
-                        numberOfLines={3}
-                        style={{ height: 80, textAlignVertical: 'top' }}
-                        placeholderTextColor="#9ca3af"
-                    />
-                </View>
+            {/* Expiry */}
+            <View style={{ marginBottom: 20 }}>
+                <Text style={labelStyle}>Expiry Date (YYYY-MM-DD)</Text>
+                <TextInput style={inputStyle} placeholder="2025-12-31" placeholderTextColor="#a0aed4" value={expiryDate} onChangeText={setExpiryDate} />
+            </View>
 
-                {/* Buttons */}
-                <View className="flex-row gap-3 pt-2 border-t border-gray-100">
-                    <Pressable
-                        onPress={onCancel}
-                        className="flex-1 py-3 rounded-lg bg-gray-100 items-center active:bg-gray-200"
+            {/* Code */}
+            <View style={{ marginBottom: 20 }}>
+                <Text style={labelStyle}>Promo Code</Text>
+                <TextInput style={inputStyle} placeholder="e.g. SAVE20" placeholderTextColor="#a0aed4" value={code} onChangeText={setCode} />
+            </View>
+
+            {/* Description */}
+            <View style={{ marginBottom: 28 }}>
+                <Text style={labelStyle}>Notes</Text>
+                <TextInput
+                    style={[inputStyle, { height: 90, textAlignVertical: 'top' }]}
+                    placeholder="Terms & conditions, notes..."
+                    placeholderTextColor="#a0aed4"
+                    value={description}
+                    onChangeText={setDescription}
+                    multiline
+                    numberOfLines={3}
+                />
+            </View>
+
+            {/* Buttons */}
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+                <Pressable
+                    onPress={onCancel}
+                    style={({ pressed }) => ({
+                        flex: 1,
+                        paddingVertical: 16,
+                        borderRadius: 16,
+                        alignItems: 'center',
+                        backgroundColor: pressed ? '#3c4270' : '#27305a',
+                        borderWidth: 1,
+                        borderColor: '#3c4270',
+                    })}
+                >
+                    <Text style={{ fontWeight: '600', color: '#dde2f4', fontSize: 15 }}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                    onPress={handleSubmit}
+                    style={{ flex: 1, borderRadius: 16, overflow: 'hidden' }}
+                >
+                    <LinearGradient
+                        colors={['#6366f1', '#8b5cf6']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={{ paddingVertical: 16, alignItems: 'center' }}
                     >
-                        <Text className="font-medium text-gray-700">Cancel</Text>
-                    </Pressable>
-                    <Pressable
-                        onPress={handleSubmit}
-                        className="flex-1 py-3 rounded-lg bg-blue-600 items-center active:bg-blue-700"
-                    >
-                        <Text className="font-medium text-white">Save Coupon</Text>
-                    </Pressable>
-                </View>
+                        <Text style={{ fontWeight: '700', color: '#fff', fontSize: 15 }}>Save Coupon</Text>
+                    </LinearGradient>
+                </Pressable>
             </View>
         </ScrollView>
     );

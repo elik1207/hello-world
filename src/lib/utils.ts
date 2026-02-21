@@ -14,14 +14,27 @@ export function formatCurrency(amount: number, currency: string = 'ILS'): string
     }).format(amount);
 }
 
+export function parseLocalDate(dateStr: string): Date | null {
+    if (!dateStr) return null;
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return null;
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1; // Months are 0-indexed
+    const day = parseInt(parts[2], 10);
+    return new Date(year, month, day);
+}
+
 export function formatDate(dateStr: string): string {
-    if (!dateStr) return '';
-    return new Date(dateStr).toLocaleDateString();
+    const date = parseLocalDate(dateStr);
+    if (!date) return '';
+    return date.toLocaleDateString();
 }
 
 export function getDaysUntilExpiry(expiryDateStr?: string): number | null {
     if (!expiryDateStr) return null;
-    const expiry = new Date(expiryDateStr);
+    const expiry = parseLocalDate(expiryDateStr);
+    if (!expiry) return null;
+
     const now = new Date();
     // Reset time part to compare dates only
     expiry.setHours(23, 59, 59, 999);

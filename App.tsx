@@ -13,26 +13,24 @@ import { SettingsPage } from './pages/SettingsPage';
 
 import './global.css';
 
-type View = 'wallet' | 'add' | 'settings';
+type AppView = 'wallet' | 'add' | 'settings';
 
 export default function App() {
     const [coupons, setCoupons] = useState<Coupon[]>([]);
-    const [view, setView] = useState<View>('wallet');
+    const [view, setView] = useState<AppView>('wallet');
     const [editingCoupon, setEditingCoupon] = useState<Coupon | undefined>(undefined);
     const [deleteId, setDeleteId] = useState<string | null>(null);
     const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
 
-    // Load coupons on mount (AsyncStorage is async)
     useEffect(() => {
         getCoupons().then(setCoupons);
     }, []);
 
-    // Save coupons whenever they change
     useEffect(() => {
         saveCoupons(coupons);
     }, [coupons]);
 
-    const handleNavChange = (newView: View) => {
+    const handleNavChange = (newView: AppView) => {
         if (newView === 'add') setEditingCoupon(undefined);
         setView(newView);
     };
@@ -59,10 +57,11 @@ export default function App() {
 
     const handleToggleStatus = (coupon: Coupon) => {
         setCoupons((curr) =>
-            curr.map((c) => {
-                if (c.id !== coupon.id) return c;
-                return { ...c, status: c.status === 'used' ? 'active' : 'used', updatedAt: Date.now() };
-            })
+            curr.map((c) =>
+                c.id !== coupon.id
+                    ? c
+                    : { ...c, status: c.status === 'used' ? 'active' : 'used', updatedAt: Date.now() }
+            )
         );
     };
 
@@ -83,7 +82,7 @@ export default function App() {
         if (ok) {
             const updated = await getCoupons();
             setCoupons(updated);
-            Alert.alert('Success', 'Coupons imported successfully!');
+            Alert.alert('✅ Imported', 'Coupons imported successfully!');
         } else {
             Alert.alert('Import Failed', 'Invalid JSON format.');
         }
@@ -96,8 +95,8 @@ export default function App() {
     };
 
     return (
-        <View className="flex-1 bg-gray-50">
-            <StatusBar style="dark" />
+        <View style={{ flex: 1, backgroundColor: '#1a1d38' }}>
+            <StatusBar style="light" />
 
             {view === 'wallet' && (
                 <WalletPage

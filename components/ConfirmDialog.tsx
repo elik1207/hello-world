@@ -1,4 +1,7 @@
 import { View, Text, Pressable, Modal } from 'react-native';
+import { BlurView } from 'expo-blur';
+import { AlertTriangle } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 
 interface ConfirmDialogProps {
     isOpen: boolean;
@@ -22,35 +25,107 @@ export function ConfirmDialog({
     isDestructive = false,
 }: ConfirmDialogProps) {
     return (
-        <Modal
-            visible={isOpen}
-            transparent
-            animationType="fade"
-            onRequestClose={onCancel}
-        >
-            <Pressable
-                className="flex-1 bg-black/50 items-center justify-center p-4"
-                onPress={onCancel}
+        <Modal visible={isOpen} transparent animationType="fade" onRequestClose={onCancel}>
+            <BlurView
+                intensity={40}
+                tint="dark"
+                style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}
             >
-                <Pressable className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 gap-4">
-                    <Text className="text-lg font-semibold text-gray-900">{title}</Text>
-                    <Text className="text-gray-600">{message}</Text>
-                    <View className="flex-row gap-3 justify-end pt-2">
-                        <Pressable
-                            onPress={onCancel}
-                            className="px-4 py-2 rounded-lg bg-gray-100 active:bg-gray-200"
+                <Pressable
+                    style={{ position: 'absolute', inset: 0 } as any}
+                    onPress={onCancel}
+                />
+                <View
+                    style={{
+                        backgroundColor: '#252849',
+                        borderRadius: 24,
+                        width: '100%',
+                        maxWidth: 360,
+                        borderWidth: 1,
+                        borderColor: '#3c4270',
+                        overflow: 'hidden',
+                        shadowColor: '#000',
+                        shadowOffset: { width: 0, height: 20 },
+                        shadowOpacity: 0.5,
+                        shadowRadius: 40,
+                        elevation: 20,
+                    }}
+                >
+                    {/* Top accent gradient strip */}
+                    <LinearGradient
+                        colors={isDestructive ? ['#921f1f', '#5a0d0d'] : ['#4e48c0', '#332d80']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={{ height: 4 }}
+                    />
+
+                    <View style={{ padding: 24 }}>
+                        {/* Icon */}
+                        <View
+                            style={{
+                                width: 52,
+                                height: 52,
+                                borderRadius: 16,
+                                backgroundColor: isDestructive ? '#921f1f33' : '#4e48c033',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                marginBottom: 16,
+                            }}
                         >
-                            <Text className="text-sm font-medium text-gray-700">{cancelLabel}</Text>
-                        </Pressable>
-                        <Pressable
-                            onPress={onConfirm}
-                            className={`px-4 py-2 rounded-lg active:opacity-80 ${isDestructive ? 'bg-red-600' : 'bg-blue-600'}`}
+                            <AlertTriangle
+                                size={26}
+                                color={isDestructive ? '#ef4444' : '#6366f1'}
+                                strokeWidth={2}
+                            />
+                        </View>
+
+                        <Text
+                            style={{ fontSize: 18, fontWeight: '700', color: '#f8fafc', marginBottom: 8 }}
                         >
-                            <Text className="text-sm font-medium text-white">{confirmLabel}</Text>
-                        </Pressable>
+                            {title}
+                        </Text>
+                        <Text style={{ fontSize: 14, color: '#dde2f4', lineHeight: 20, marginBottom: 24 }}>
+                            {message}
+                        </Text>
+
+                        <View style={{ flexDirection: 'row', gap: 12 }}>
+                            <Pressable
+                                onPress={onCancel}
+                                style={({ pressed }) => ({
+                                    flex: 1,
+                                    paddingVertical: 14,
+                                    borderRadius: 14,
+                                    backgroundColor: pressed ? '#3c4270' : '#27305a',
+                                    alignItems: 'center',
+                                    borderWidth: 1,
+                                    borderColor: '#3c4270',
+                                })}
+                            >
+                                <Text style={{ fontSize: 14, fontWeight: '600', color: '#dde2f4' }}>
+                                    {cancelLabel}
+                                </Text>
+                            </Pressable>
+
+                            <Pressable
+                                onPress={onConfirm}
+                                style={({ pressed }) => ({
+                                    flex: 1,
+                                    paddingVertical: 14,
+                                    borderRadius: 14,
+                                    alignItems: 'center',
+                                    opacity: pressed ? 0.8 : 1,
+                                    overflow: 'hidden',
+                                    backgroundColor: isDestructive ? '#b91c1c' : '#6366f1',
+                                })}
+                            >
+                                <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }}>
+                                    {confirmLabel}
+                                </Text>
+                            </Pressable>
+                        </View>
                     </View>
-                </Pressable>
-            </Pressable>
+                </View>
+            </BlurView>
         </Modal>
     );
 }

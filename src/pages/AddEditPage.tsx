@@ -9,8 +9,8 @@ interface AddEditPageProps {
 
 export function AddEditPage({ initialData, onSave, onCancel }: AddEditPageProps) {
     return (
-        <div className="pb-20 pt-6 px-4 max-w-md mx-auto bg-white min-h-screen">
-            <h1 className="text-2xl font-bold text-gray-900 mb-6">
+        <div className="pb-20 pt-6 px-4 max-w-md mx-auto bg-brand-bg">
+            <h1 className="text-2xl font-bold text-text-primary mb-6">
                 {initialData ? 'Edit Coupon' : 'Add New Coupon'}
             </h1>
             <CouponForm
