@@ -9,6 +9,7 @@
     "web": "expo start --web",
     "tunnel": "expo start --tunnel",
     "test": "jest --passWithNoTests",
+    "eval": "npx ts-node eval/runEval.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

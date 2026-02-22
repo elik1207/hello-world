@@ -7,8 +7,9 @@ import rateLimit from 'express-rate-limit';
 import { extractGiftFromText } from '../lib/ai/extractGiftFromText';
 // Import optional LLM algorithm
 import { extractWithLlm, ExpectedResponseSchema } from './llm/extractWithLlm';
-import type { SourceType } from '../lib/types';
+import type { SourceType, GiftOrVoucherDraft } from '../lib/types';
 import { PostHog } from 'posthog-node';
+import crypto from 'crypto';
 
 dotenv.config();
 
@@ -38,11 +39,37 @@ const apiLimiter = rateLimit({
 });
 app.use('/ai/', apiLimiter);
 
+// Concurrency limiter for expensive LLM calls
+let activeLlmRequests = 0;
+const MAX_CONCURRENT_LLM_REQUESTS = 5;
+
+// Simple in-memory cache for LLM routes to prevent repeat parsing of exact same strings (max 1000 items)
+const responseCache = new Map<string, GiftOrVoucherDraft>();
+
 // Schema for validating incoming extraction requests
 const extractRequestSchema = z.object({
     sourceText: z.string().min(1, 'Source text cannot be empty'),
     sourceType: z.string().optional()
 });
+
+// Routing Heuristic: Decides if we actually need to pay for an LLM call or if the regex nailed it
+function shouldUseLlm(sourceText: string, deterministicResult: GiftOrVoucherDraft | null): boolean {
+    if (!deterministicResult) return true; // Regex yielded nothing at all
+
+    // Explicit exclusions - if it has "tracking" things, don't bother LLM
+    if (sourceText.toLowerCase().includes('password') || sourceText.toLowerCase().includes('verification code')) {
+        return false;
+    }
+
+    const missingAmount = !deterministicResult.amount;
+    const missingTitle = !deterministicResult.title;
+    const hasAmbiguousCode = (deterministicResult.code?.length || 0) < 4;
+
+    const missingConditionCount = (missingAmount ? 1 : 0) + (missingTitle ? 1 : 0) + (hasAmbiguousCode ? 1 : 0);
+
+    // Fall back to the heavy model if we are missing critical fields
+    return missingConditionCount >= 1;
+}
 
 app.post('/ai/extract', async (req, res) => {
     const requestId = req.header('X-Request-ID') || Math.random().toString(36).substring(7);
@@ -106,28 +133,64 @@ app.post('/ai/extract', async (req, res) => {
         const parsedBody = extractRequestSchema.parse(req.body);
         const { sourceText, sourceType } = parsedBody;
 
-        let draft;
+        // 1. Initial Fast Deterministic Check
+        const detDraft = extractGiftFromText(sourceText, sourceType as SourceType);
 
-        // 2. Hybrid Provider Execution
-        if (process.env.AI_PROVIDER === 'llm') {
-            try {
-                // Attempt OpenAI extraction strictly
-                draft = await extractWithLlm(sourceText, sourceType as SourceType);
-                trackBackendEvent('llm_used', { success: true });
-            } catch (llmError: any) {
-                console.warn(`[REQ ${requestId}] LLM failed (${llmError.message}). Falling back to deterministic regex.`);
+        let draft: GiftOrVoucherDraft | null = detDraft;
 
-                trackBackendEvent('extract_fallback', {
-                    reason: llmError.message?.toLowerCase().includes('timeout') ? 'timeout' : 'provider_error'
-                });
+        // 2. Hybrid Provider Execution / Routing
+        if (process.env.AI_PROVIDER === 'llm' && shouldUseLlm(sourceText, detDraft)) {
+            const safeSourceType = sourceType || 'other';
+            const cacheKey = crypto.createHash('sha256').update(sourceText + '|' + safeSourceType).digest('hex');
 
-                // Fallback deterministic execution
-                draft = extractGiftFromText(sourceText, sourceType as SourceType);
-                draft.assumptions!.push("LLM output invalid or timed out; fell back to deterministic parsing.");
+            if (responseCache.has(cacheKey)) {
+                draft = responseCache.get(cacheKey)!;
+                trackBackendEvent('llm_cache_hit', { success: true });
+            } else if (activeLlmRequests >= MAX_CONCURRENT_LLM_REQUESTS) {
+                console.warn(`[REQ ${requestId}] Concurrency limit hit. Falling back to deterministic directly.`);
+                trackBackendEvent('extract_fallback', { reason: 'concurrency_limit' });
+            } else {
+                activeLlmRequests++;
+                try {
+                    // Attempt OpenAI extraction strictly
+                    const llmResult = await extractWithLlm(sourceText, sourceType as SourceType);
+
+                    if (llmResult === null) {
+                        // Model explicitly said this is irrelevant text. 
+                        draft = null;
+                    } else {
+                        draft = llmResult;
+                        // Cache successful expensive result
+                        if (responseCache.size >= 1000) {
+                            const firstKey = responseCache.keys().next().value;
+                            responseCache.delete(firstKey);
+                        }
+                        responseCache.set(cacheKey, llmResult);
+                    }
+
+                    trackBackendEvent('llm_used', { success: true });
+                } catch (llmError: any) {
+                    console.warn(`[REQ ${requestId}] LLM failed (${llmError.message}). Falling back to deterministic regex.`);
+
+                    trackBackendEvent('extract_fallback', {
+                        reason: llmError.message?.toLowerCase().includes('timeout') ? 'timeout' : 'provider_error'
+                    });
+
+                    // Fallback deterministic execution ensuring we return *something* if regex had a clue
+                    draft = detDraft;
+                    if (draft) {
+                        draft.assumptions = draft.assumptions || [];
+                        draft.assumptions.push("LLM output invalid or timed out; fell back to deterministic parsing.");
+                    }
+                } finally {
+                    activeLlmRequests--;
+                }
             }
-        } else {
-            // Standard Deterministic Shared Parser
-            draft = extractGiftFromText(sourceText, sourceType as SourceType);
+        }
+
+        // If the decision (via LLM returning strict null) is that this is irrelevant spam/chat:
+        if (draft === null) {
+            return res.json(null); // Explicit non-voucher
         }
 
         // 3. Strict Unified Validation (Applies to deterministic parser as well)

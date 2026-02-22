@@ -40,7 +40,7 @@ export const ExpectedResponseSchema = z.object({
     }))
 });
 
-export async function extractWithLlm(text: string, sourceType: SourceType): Promise<GiftOrVoucherDraft> {
+export async function extractWithLlm(text: string, sourceType: SourceType): Promise<GiftOrVoucherDraft | null> {
     const model = process.env.AI_MODEL || 'gpt-4o-mini';
     const timeoutMs = parseInt(process.env.AI_TIMEOUT_MS || '8000', 10);
     const maxQuestions = parseInt(process.env.AI_MAX_QUESTIONS || '1', 10);
@@ -49,17 +49,18 @@ export async function extractWithLlm(text: string, sourceType: SourceType): Prom
 You are a deterministic parsing engine for an Israeli Coupon/Gift Card Wallet app.
 Extract all structured data from the user's raw message strictly as a JSON object matching the requested schema.
 
-RULES:
+CRITICAL RULES:
 1. ONLY return a raw JSON object. Do not include markdown codeblocks (no \`\`\`json).
-2. Currencies should be ISO codes (e.g. ₪ = "ILS", $ = "USD", € = "EUR"). Default to ILS if none found.
-3. Expiration dates MUST be formatted as ISO 8601 strings (e.g. 2026-12-31T22:00:00.000Z).
-4. If any key fields (title, amount, code, expirationDate) cannot be determined, append their keys to the "missingRequiredFields" array.
-5. If you make a strong assumption or inference to determine a field (like guessing ILS for currency or assuming an expiration date), append the field's key (e.g. "amount", "expirationDate") to the "inferredFields" array.
-6. IF AND ONLY IF "title" is missing, generate exactly ${maxQuestions} question(s) in Hebrew asking the user to provide the title.
+2. If the message is NOT a gift card, coupon, store credit, or voucher (e.g. personal chat, news, flight tickets, tracking numbers, OTP codes, password resets), you MUST return \`null\`.
+3. Currencies should be ISO codes (e.g. ₪ = "ILS", $ = "USD", € = "EUR"). Default to ILS if none found.
+4. Expiration dates MUST be formatted as ISO 8601 strings (e.g. 2026-12-31T22:00:00.000Z).
+5. If any key fields (title, amount, code, expirationDate) cannot be determined, append their keys to the "missingRequiredFields" array.
+6. If you make a strong assumption or inference to determine a field (like guessing ILS for currency or assuming an expiration date), append the field's key (e.g. "amount", "expirationDate") to the "inferredFields" array.
+7. IF AND ONLY IF "title" is missing AND the text is definitely a voucher, generate exactly ${maxQuestions} question(s) in Hebrew asking the user to provide the title.
    Example: "איך נקרא לשובר או למתנה הזו?"
    Never ask questions for optional fields (like amount, code, or date).
-7. State any deductions logically in the "assumptions" array in English.
-8. Return a "confidence" float between 0.0 and 1.0 reflecting your extraction certainty.
+8. State any deductions logically in the "assumptions" array in English.
+9. Return a "confidence" float between 0.0 and 1.0 reflecting your extraction certainty.
 `;
 
     const userPrompt = `
@@ -94,8 +95,14 @@ Raw Text: ${text}
                 throw new Error('LLM returned empty response.');
             }
 
-            // Zod validation strictly enforces the Phase 1 Output schema
+            // Zod validation strictly enforces the Phase 1 Output schema. Allow it to throw.
             const parsedJson = JSON.parse(content);
+
+            // Explicit Non-voucher check: if the LLM returned exactly null, resolve immediately rather than falling back to regex.
+            if (parsedJson === null) {
+                return null as any;
+            }
+
             const validated = ExpectedResponseSchema.parse(parsedJson);
 
             // Map to exact required interface
