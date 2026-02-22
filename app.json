@@ -29,7 +29,8 @@
     },
     "plugins": [
       "expo-sqlite",
-      "@sentry/react-native"
+      "@sentry/react-native",
+      "./plugins/withAndroidShareIntent"
     ],
     "scheme": "couponwallet",
     "experiments": {

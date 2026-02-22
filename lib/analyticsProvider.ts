@@ -52,6 +52,15 @@ const ALLOWLIST: Set<string> = new Set([
     'to',
     'count',
     'trigger',
+    // Bulk & Views
+    'action',
+    'hasTags',
+    // Intake (Phase 10)
+    'source',
+    'lengthBucket',
+    'hasAmountHint',
+    'hasDateHint',
+    'hasKeywordHint',
     // Infrastructure/Safety
     'error', // safe error labels
     'errorMessage',

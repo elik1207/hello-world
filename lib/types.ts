@@ -61,3 +61,22 @@ export interface GiftOrVoucherDraft {
     inferredFields?: (keyof GiftOrVoucherDraft)[];
     questions: ClarificationQuestion[];
 }
+
+export interface SavedViewPayload {
+    searchText: string;
+    statusTab: 'all' | 'active' | 'used' | 'expired';
+    missingOnly: boolean;
+    needsReviewOnly: boolean;
+    tagFilter: string[];
+    untaggedOnly: boolean;
+    sortBy: 'expiryDate' | 'createdAt' | 'amount';
+    sortDir: 'asc' | 'desc';
+}
+
+export interface SavedView {
+    id: string;
+    name: string;
+    payload: SavedViewPayload;
+    createdAt: number;
+    updatedAt: number;
+}

@@ -192,6 +192,31 @@ describe('lib/db - Migrations & Deduplication', () => {
             ])
         );
     });
+
+    it('batchUpdateStatus assigns and clears usedAt properly', async () => {
+        const { batchUpdateStatus } = await import('./db');
+        const ids = ['c1', 'c2'];
+
+        await batchUpdateStatus(ids, 'used');
+        expect(mockRunAsync).toHaveBeenCalledWith(
+            expect.stringContaining('SET status = ?, usedAt = ?, updatedAt = ?'),
+            expect.arrayContaining(['used', expect.any(String), expect.any(Number), 'c1', 'c2'])
+        );
+
+        mockRunAsync.mockClear();
+        await batchUpdateStatus(ids, 'active');
+        expect(mockRunAsync).toHaveBeenCalledWith(
+            expect.stringContaining('SET status = ?, usedAt = NULL, updatedAt = ?'),
+            expect.arrayContaining(['active', expect.any(Number), 'c1', 'c2'])
+        );
+
+        mockRunAsync.mockClear();
+        await batchUpdateStatus(ids, 'expired');
+        expect(mockRunAsync).toHaveBeenCalledWith(
+            expect.stringContaining('SET status = ?, updatedAt = ?'),
+            expect.arrayContaining(['expired', expect.any(Number), 'c1', 'c2'])
+        );
+    });
 });
 
 describe('lib/db - Search & Filter (listCoupons)', () => {

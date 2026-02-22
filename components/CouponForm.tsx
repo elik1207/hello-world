@@ -28,6 +28,29 @@ export function CouponForm({ initialData, onSave, onCancel, onToggleStatus }: Co
     const [event, setEvent] = useState(initialData?.event ?? '');
     const [imageUrl, setImageUrl] = useState(initialData?.imageUrl ?? '');
     const [barcodeData, setBarcodeData] = useState(initialData?.barcodeData ?? '');
+    const [tags, setTags] = useState<string[]>(initialData?.tags ?? []);
+    const [tagInput, setTagInput] = useState('');
+
+    const handleAddTag = () => {
+        const { validateTag } = require('../lib/tags');
+        const validated = validateTag(tagInput);
+        if (validated.valid && validated.normalized) {
+            if (tags.length >= 8) {
+                Alert.alert('Limit Reached', 'Maximum 8 tags allowed');
+                return;
+            }
+            if (!tags.includes(validated.normalized)) {
+                setTags([...tags, validated.normalized]);
+            }
+            setTagInput('');
+        } else if (validated.error && tagInput.trim().length > 0) {
+            Alert.alert('Invalid Tag', validated.error);
+        }
+    };
+
+    const handleRemoveTag = (tagToRemove: string) => {
+        setTags(tags.filter(t => t !== tagToRemove));
+    };
 
     const handleSubmit = () => {
         if (!title.trim()) { Alert.alert('Validation', 'Title is required'); return; }
@@ -57,7 +80,8 @@ export function CouponForm({ initialData, onSave, onCancel, onToggleStatus }: Co
         onSave({
             type, title, description, discountType, discountValue: finalDiscountValue,
             initialValue: finalInitialValue, remainingValue: finalRemainingValue,
-            currency, expiryDate, store, category, code, sender, event, imageUrl, barcodeData
+            currency, expiryDate, store, category, code, sender, event, imageUrl, barcodeData,
+            tags
         });
     };
 
@@ -146,6 +170,38 @@ export function CouponForm({ initialData, onSave, onCancel, onToggleStatus }: Co
                     <Text style={labelStyle}>Category</Text>
                     <TextInput style={inputStyle} placeholder="e.g. Food" placeholderTextColor="#a0aed4" value={category} onChangeText={setCategory} />
                 </View>
+            </View>
+
+            {/* Tags */}
+            <View style={{ marginBottom: 20 }}>
+                <Text style={labelStyle}>Tags (Max 8)</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#27305a', borderWidth: 1, borderColor: '#3c4270', borderRadius: 14, paddingRight: 4 }}>
+                    <TextInput
+                        style={[inputStyle, { flex: 1, borderWidth: 0, backgroundColor: 'transparent' }]}
+                        placeholder="e.g. birthday, online..."
+                        placeholderTextColor="#a0aed4"
+                        value={tagInput}
+                        onChangeText={setTagInput}
+                        onSubmitEditing={handleAddTag}
+                        blurOnSubmit={false}
+                        returnKeyType="done"
+                    />
+                    <Pressable onPress={handleAddTag} style={{ paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#6366f1', borderRadius: 10, marginRight: 2 }}>
+                        <Text style={{ fontWeight: '600', color: '#fff' }}>Add</Text>
+                    </Pressable>
+                </View>
+                {tags.length > 0 && (
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+                        {tags.map((tag, idx) => (
+                            <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#332d80', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: '#4e48c0' }}>
+                                <Text style={{ fontSize: 13, color: '#dde2f4', fontWeight: '500', marginRight: 6 }}>{tag}</Text>
+                                <Pressable onPress={() => handleRemoveTag(tag)} hitSlop={8}>
+                                    <Text style={{ color: '#a78bfa', fontSize: 14, fontWeight: '700' }}>×</Text>
+                                </Pressable>
+                            </View>
+                        ))}
+                    </View>
+                )}
             </View>
 
             {/* Gift Sender & Event */}

@@ -1,12 +1,19 @@
-import { useState, useEffect, useCallback } from 'react';
-import { View, Alert } from 'react-native';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Alert, AppState } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import * as Linking from 'expo-linking';
+import * as Clipboard from 'expo-clipboard';
+import { Platform, NativeModules } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Coupon } from './lib/types';
 import { initDb, getCoupons, upsertCoupon, deleteCoupon, clearDb, isDuplicateFingerprint } from './lib/db';
 import { generateFingerprint } from './lib/fingerprint';
 import { generateId } from './lib/utils';
 import { exportWallet, importWalletFile } from './lib/importExport';
 import { scheduleCouponReminder, cancelCouponReminder } from './lib/reminders';
+import { normalizeIncomingText, classifyIntake, getSafeAnalyticsMeta } from './lib/intake';
+import { trackEvent } from './lib/analytics';
+import { stableDigest } from './lib/hash';
 import { BottomNav } from './components/BottomNav';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { WalletPage } from './pages/WalletPage';
@@ -17,6 +24,16 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import * as Sentry from '@sentry/react-native';
 
 import './global-css';
+
+// Feature flags (default OFF)
+const INTAKE_DEEPLINK = process.env.EXPO_PUBLIC_FEATURE_INTAKE_DEEPLINK === 'true';
+const INTAKE_SHARE = process.env.EXPO_PUBLIC_FEATURE_INTAKE_SHARE === 'true';
+const INTAKE_CLIPBOARD = process.env.EXPO_PUBLIC_FEATURE_INTAKE_CLIPBOARD === 'true';
+
+const CLIPBOARD_THROTTLE_MS = 5 * 60 * 1000; // 5 minutes
+const CLIPBOARD_DIGEST_KEY = '@intake_clipboard_digest';
+const CLIPBOARD_TIME_KEY = '@intake_clipboard_lastPromptAt';
+const CLIPBOARD_ENABLED_KEY = '@intake_clipboard_enabled';
 
 Sentry.init({
     dsn: process.env.EXPO_PUBLIC_SENTRY_DSN || 'https://dummy@o0.ingest.sentry.io/0',
@@ -40,19 +57,137 @@ function App() {
     const [editingCoupon, setEditingCoupon] = useState<Coupon | undefined>(undefined);
     const [deleteId, setDeleteId] = useState<string | null>(null);
     const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
+    const [intakeText, setIntakeText] = useState<string | undefined>(undefined);
+    const appState = useRef(AppState.currentState);
+
+    // --- Deep link / Share intake handler ---
+    const handleIncomingUrl = useCallback((url: string, source: string = 'deeplink') => {
+        try {
+            const parsed = Linking.parse(url);
+            if (parsed.path === 'intake' && parsed.queryParams?.text) {
+                const text = normalizeIncomingText(String(parsed.queryParams.text));
+                if (text) {
+                    const meta = getSafeAnalyticsMeta(text, source);
+                    trackEvent('intake_opened', meta);
+                    setIntakeText(text);
+                    setView('add-ai');
+                }
+            }
+        } catch (e) {
+            console.error('[Intake] Failed to parse URL:', e);
+        }
+    }, []);
+
+    const handleSharedText = useCallback((text: string) => {
+        const normalized = normalizeIncomingText(text);
+        if (normalized) {
+            const meta = getSafeAnalyticsMeta(normalized, 'share');
+            trackEvent('intake_opened', meta);
+            setIntakeText(normalized);
+            setView('add-ai');
+        }
+    }, []);
 
     useEffect(() => {
         initDb().then(async () => {
             const { autoExpireCoupons } = await import('./lib/db');
             await autoExpireCoupons();
             const loaded = await getCoupons();
-            // Optional: iterate active items to retroactively inject lost reminders when settings flip. Skipping for now.
             setCoupons(loaded);
         }).catch(console.error);
+
+        // Deep link: initial URL (cold start)
+        if (INTAKE_DEEPLINK || INTAKE_SHARE) {
+            Linking.getInitialURL().then(url => {
+                if (url) handleIncomingUrl(url);
+            }).catch(console.error);
+
+            // Deep link: warm start
+            const sub = Linking.addEventListener('url', (event) => {
+                handleIncomingUrl(event.url);
+            });
+
+            // Android share intent: check if app was opened via ACTION_SEND
+            if (INTAKE_SHARE && Platform.OS === 'android') {
+                const ShareMenu = NativeModules.ShareMenu;
+                if (ShareMenu?.getSharedText) {
+                    ShareMenu.getSharedText((text: string | null) => {
+                        if (text) handleSharedText(text);
+                    });
+                }
+            }
+
+            return () => sub.remove();
+        }
+    }, [handleIncomingUrl, handleSharedText]);
+
+    // --- Clipboard suggestion (conservative, non-annoying) ---
+    useEffect(() => {
+        if (!INTAKE_CLIPBOARD) return;
+
+        const checkClipboard = async () => {
+            try {
+                const enabledStr = await AsyncStorage.getItem(CLIPBOARD_ENABLED_KEY);
+                if (enabledStr !== 'true') return; // Opt-in only
+
+                const text = await Clipboard.getStringAsync();
+                if (!text || text.trim().length < 10) return;
+
+                const normalized = normalizeIncomingText(text);
+                const classification = classifyIntake(normalized);
+                if (!classification.isCandidate) return;
+
+                // Throttle check
+                const lastTimeStr = await AsyncStorage.getItem(CLIPBOARD_TIME_KEY);
+                if (lastTimeStr && (Date.now() - parseInt(lastTimeStr, 10)) < CLIPBOARD_THROTTLE_MS) return;
+
+                // Dedup check (SHA-256 digest — no text content persisted)
+                const digest = await stableDigest(normalized);
+                const lastDigest = await AsyncStorage.getItem(CLIPBOARD_DIGEST_KEY);
+                if (digest === lastDigest) return;
+
+                await AsyncStorage.setItem(CLIPBOARD_DIGEST_KEY, digest);
+                await AsyncStorage.setItem(CLIPBOARD_TIME_KEY, Date.now().toString());
+
+                const meta = getSafeAnalyticsMeta(normalized, 'clipboard');
+
+                Alert.alert(
+                    'מצאתי טקסט שנראה כמו שובר',
+                    'לשמור לארנק?',
+                    [
+                        {
+                            text: 'לא עכשיו',
+                            style: 'cancel',
+                            onPress: () => trackEvent('intake_suggested', { ...meta, action: 'dismissed' }),
+                        },
+                        {
+                            text: 'כן',
+                            onPress: () => {
+                                trackEvent('intake_suggested', { ...meta, action: 'accepted' });
+                                setIntakeText(normalized);
+                                setView('add-ai');
+                            },
+                        },
+                    ]
+                );
+            } catch (e) {
+                console.error('[Clipboard] check failed:', e);
+            }
+        };
+
+        const subscription = AppState.addEventListener('change', (nextState) => {
+            if (appState.current.match(/inactive|background/) && nextState === 'active') {
+                checkClipboard();
+            }
+            appState.current = nextState;
+        });
+
+        return () => subscription.remove();
     }, []);
 
     const handleNavChange = (newView: AppView) => {
         if (newView === 'add') setEditingCoupon(undefined);
+        if (newView !== 'add-ai') setIntakeText(undefined); // Clear intake on nav away
         setView(newView);
     };
 
@@ -189,7 +324,8 @@ function App() {
                 <ErrorBoundary onReset={() => setView('wallet')}>
                     <AddViaAIPage
                         onSave={handleSave}
-                        onCancel={() => setView('wallet')}
+                        onCancel={() => { setIntakeText(undefined); setView('wallet'); }}
+                        initialText={intakeText}
                     />
                 </ErrorBoundary>
             )}

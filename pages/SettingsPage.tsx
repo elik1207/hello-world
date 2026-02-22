@@ -4,6 +4,9 @@ import * as Haptics from 'expo-haptics';
 import { Download, Upload, Trash2, ChevronRight, Shield, Database, Bell } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getReminderSettings, setReminderSettings } from '../lib/reminders';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const CLIPBOARD_ENABLED_KEY = '@intake_clipboard_enabled';
 
 interface SettingsPageProps {
     onExport: () => void;
@@ -14,13 +17,22 @@ interface SettingsPageProps {
 export function SettingsPage({ onExport, onImport, onClear }: SettingsPageProps) {
     const [remindersEnabled, setRemindersEnabled] = useState(true);
     const [remindDaysBefore, setRemindDaysBefore] = useState(3);
+    const [clipboardEnabled, setClipboardEnabled] = useState(false);
 
     useEffect(() => {
         getReminderSettings().then(cfg => {
             setRemindersEnabled(cfg.enabled);
             setRemindDaysBefore(cfg.daysBefore);
         });
+        AsyncStorage.getItem(CLIPBOARD_ENABLED_KEY).then(val => {
+            setClipboardEnabled(val === 'true');
+        });
     }, []);
+
+    const toggleClipboardSuggestions = async (val: boolean) => {
+        setClipboardEnabled(val);
+        await AsyncStorage.setItem(CLIPBOARD_ENABLED_KEY, val.toString());
+    };
 
     const toggleReminders = async (val: boolean) => {
         setRemindersEnabled(val);
@@ -185,6 +197,29 @@ export function SettingsPage({ onExport, onImport, onClear }: SettingsPageProps)
                             </View>
                         </View>
                     )}
+                </View>
+
+                {/* Clipboard Suggestions Section */}
+                <View style={{
+                    backgroundColor: '#27305a',
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    borderColor: '#3c4270',
+                    overflow: 'hidden',
+                    marginTop: 16
+                }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16 }}>
+                        <View style={{ flex: 1, paddingRight: 16 }}>
+                            <Text style={{ fontSize: 15, fontWeight: '600', color: '#f8fafc' }}>Clipboard Suggestions</Text>
+                            <Text style={{ fontSize: 12, color: '#a0aed4', marginTop: 2 }}>Suggest saving vouchers from clipboard</Text>
+                        </View>
+                        <Switch
+                            value={clipboardEnabled}
+                            onValueChange={toggleClipboardSuggestions}
+                            trackColor={{ false: '#3c4270', true: '#6366f1' }}
+                            thumbColor={'#fff'}
+                        />
+                    </View>
                 </View>
 
                 {/* App Version */}

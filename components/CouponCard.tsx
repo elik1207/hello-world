@@ -12,9 +12,12 @@ import { formatCurrency, formatDate, getDaysUntilExpiry } from '../lib/utils';
 
 interface CouponCardProps {
     coupon: Coupon;
-    onEdit: (coupon: Coupon) => void;
-    onDelete: (coupon: Coupon) => void;
-    onToggleStatus: (coupon: Coupon) => void;
+    onEdit?: (coupon: Coupon) => void;
+    onDelete?: (coupon: Coupon) => void;
+    onToggleStatus?: (coupon: Coupon) => void;
+    isSelectionMode?: boolean;
+    isSelected?: boolean;
+    onToggleSelect?: (id: string) => void;
 }
 
 function ActionBtn({
@@ -46,7 +49,7 @@ function ActionBtn({
     );
 }
 
-export function CouponCard({ coupon, onEdit, onDelete, onToggleStatus }: CouponCardProps) {
+export function CouponCard({ coupon, onEdit, onDelete, onToggleStatus, isSelectionMode, isSelected, onToggleSelect }: CouponCardProps) {
     const daysLeft = getDaysUntilExpiry(coupon.expiryDate);
     const isExpired = daysLeft !== null && daysLeft < 0;
 
@@ -132,6 +135,13 @@ export function CouponCard({ coupon, onEdit, onDelete, onToggleStatus }: CouponC
                 )}
 
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    {isSelectionMode && (
+                        <View style={{ justifyContent: 'center', marginRight: 12, marginTop: 4 }}>
+                            <View style={{ width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: isSelected ? '#6366f1' : '#4e48c0', backgroundColor: isSelected ? '#6366f1' : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+                                {isSelected && <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#fff' }} />}
+                            </View>
+                        </View>
+                    )}
                     <View style={{ flex: 1, marginRight: 12 }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
                             <TypeIcon size={12} color="#a0aed4" />
@@ -221,10 +231,10 @@ export function CouponCard({ coupon, onEdit, onDelete, onToggleStatus }: CouponC
                         </Text>
                     </View>
                     <View style={{ flexDirection: 'row', gap: 4 }}>
-                        {!isUsed && !isExpired && <ActionBtn onPress={() => onToggleStatus(coupon)} icon={<CheckCircle size={16} color="#10b981" />} color="#10b981" />}
-                        {isUsed && <ActionBtn onPress={() => onToggleStatus(coupon)} icon={<CheckCircle size={16} color="#6366f1" />} color="#6366f1" />}
-                        <ActionBtn onPress={() => onEdit(coupon)} icon={<Edit2 size={16} color="#dde2f4" />} color="#dde2f4" />
-                        <ActionBtn onPress={() => onDelete(coupon)} icon={<Trash2 size={16} color="#ef4444" />} color="#ef4444" haptic="Medium" />
+                        {!isUsed && !isExpired && <ActionBtn onPress={() => onToggleStatus && onToggleStatus(coupon)} icon={<CheckCircle size={16} color="#10b981" />} color="#10b981" />}
+                        {isUsed && <ActionBtn onPress={() => onToggleStatus && onToggleStatus(coupon)} icon={<CheckCircle size={16} color="#6366f1" />} color="#6366f1" />}
+                        <ActionBtn onPress={() => onEdit && onEdit(coupon)} icon={<Edit2 size={16} color="#dde2f4" />} color="#dde2f4" />
+                        <ActionBtn onPress={() => onDelete && onDelete(coupon)} icon={<Trash2 size={16} color="#ef4444" />} color="#ef4444" haptic="Medium" />
                     </View>
                 </View>
             </View>

@@ -19,7 +19,11 @@ export type AnalyticsEvent =
     | 'clarify_shown'
     | 'field_edited'
     | 'save_success'
-    | 'status_updated';
+    | 'status_updated'
+    | 'saved_view_created'
+    | 'bulk_action_applied'
+    | 'intake_opened'
+    | 'intake_suggested';
 
 export interface EventPayload {
     requestId?: string;

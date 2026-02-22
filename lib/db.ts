@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import { Coupon, ItemType, DiscountType, CouponStatus } from './types';
+import { Coupon, ItemType, DiscountType, CouponStatus, SavedView, SavedViewPayload } from './types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { generateFingerprint } from './fingerprint';
 import { isExpired } from './utils';
@@ -127,6 +127,21 @@ export async function initDb(): Promise<void> {
         }
     }
 
+    if (currentVersion === 4) {
+        // v5: Organization (Saved Views)
+        await db.execAsync(`
+            CREATE TABLE IF NOT EXISTS saved_views (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                createdAt INTEGER NOT NULL,
+                updatedAt INTEGER NOT NULL
+            );
+        `);
+        currentVersion = 5;
+        await db.execAsync(`PRAGMA user_version = ${currentVersion}`);
+    }
+
     // Attempt migration from AsyncStorage ONE TIME
     await migrateFromAsyncStorage(db);
 }
@@ -165,6 +180,8 @@ export interface ListCouponsOptions {
     statusFilter?: 'all' | 'active' | 'used' | 'expired';
     needsReviewOnly?: boolean;
     missingOnly?: boolean;
+    tagFilter?: string[]; // ALL tags must match
+    untaggedOnly?: boolean;
     sortBy?: 'expiryDate' | 'createdAt' | 'amount';
     sortDir?: 'asc' | 'desc';
     limit?: number;
@@ -202,6 +219,16 @@ export async function listCoupons(opts: ListCouponsOptions): Promise<Coupon[]> {
     }
     if (opts.missingOnly) {
         query += ` AND missingFieldCount > 0`;
+    }
+
+    if (opts.untaggedOnly) {
+        query += ` AND (tags IS NULL OR tags = '[]')`;
+    } else if (opts.tagFilter && opts.tagFilter.length > 0) {
+        for (const tag of opts.tagFilter) {
+            query += ` AND tags LIKE ?`;
+            // Secure search for explicit JSON string array item
+            params.push(`%"${tag}"%`);
+        }
     }
 
     const sortField = opts.sortBy === 'expiryDate' ? 'expiryDate' :
@@ -295,6 +322,172 @@ export async function upsertCoupon(coupon: Coupon, fingerprint?: string): Promis
 export async function deleteCoupon(id: string): Promise<void> {
     const db = await getDb();
     await db.runAsync('DELETE FROM coupons WHERE id = ?', [id]);
+}
+
+// --- Tag Operations ---
+export async function updateCouponTags(id: string, tags: string[]): Promise<void> {
+    const db = await getDb();
+    const { dedupeTags } = await import('./tags');
+    const safeTags = dedupeTags(tags);
+    await db.runAsync('UPDATE coupons SET tags = ? WHERE id = ?', [JSON.stringify(safeTags), id]);
+}
+
+export async function addTagToCoupon(id: string, tag: string): Promise<void> {
+    const db = await getDb();
+    const existing = await db.getFirstAsync<{ tags: string | null }>('SELECT tags FROM coupons WHERE id = ?', [id]);
+    if (!existing) return;
+
+    let currentTags: string[] = [];
+    if (existing.tags) {
+        try { currentTags = JSON.parse(existing.tags); } catch (e) { }
+    }
+
+    const { dedupeTags } = await import('./tags');
+    const updatedTags = dedupeTags([...currentTags, tag]);
+    await db.runAsync('UPDATE coupons SET tags = ? WHERE id = ?', [JSON.stringify(updatedTags), id]);
+}
+
+export async function removeTagFromCoupon(id: string, tagToRemove: string): Promise<void> {
+    const db = await getDb();
+    const existing = await db.getFirstAsync<{ tags: string | null }>('SELECT tags FROM coupons WHERE id = ?', [id]);
+    if (!existing || !existing.tags) return;
+
+    let currentTags: string[] = [];
+    try { currentTags = JSON.parse(existing.tags); } catch (e) { return; }
+
+    const { normalizeTag } = await import('./tags');
+    const normalizedTarget = normalizeTag(tagToRemove);
+    const updatedTags = currentTags.filter(t => normalizeTag(t) !== normalizedTarget);
+
+    await db.runAsync('UPDATE coupons SET tags = ? WHERE id = ?', [JSON.stringify(updatedTags), id]);
+}
+
+export async function getAllTags(): Promise<string[]> {
+    const db = await getDb();
+    const rows = await db.getAllAsync<{ tags: string | null }>('SELECT tags FROM coupons WHERE tags IS NOT NULL AND tags != "[]"');
+
+    const allTags = new Set<string>();
+    for (const row of rows) {
+        if (!row.tags) continue;
+        try {
+            const tags = JSON.parse(row.tags) as string[];
+            for (const tag of tags) allTags.add(tag);
+        } catch (e) { }
+    }
+    return Array.from(allTags).sort();
+}
+
+// --- Saved Views Operations ---
+export async function listSavedViews(): Promise<SavedView[]> {
+    const db = await getDb();
+    const rows = await db.getAllAsync<{ id: string, name: string, payload: string, createdAt: number, updatedAt: number }>('SELECT * FROM saved_views ORDER BY name ASC');
+    return rows.map(r => ({
+        id: r.id,
+        name: r.name,
+        payload: JSON.parse(r.payload),
+        createdAt: r.createdAt,
+        updatedAt: r.updatedAt
+    }));
+}
+
+export async function createSavedView(name: string, payload: SavedViewPayload): Promise<void> {
+    const db = await getDb();
+    const id = Date.now().toString() + '_' + Math.random().toString(36).substr(2, 9);
+    const now = Date.now();
+    await db.runAsync(
+        'INSERT INTO saved_views (id, name, payload, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)',
+        [id, name, JSON.stringify(payload), now, now]
+    );
+}
+
+export async function updateSavedView(id: string, name?: string, payload?: SavedViewPayload): Promise<void> {
+    const db = await getDb();
+    const existing = await db.getFirstAsync<{ name: string, payload: string }>('SELECT name, payload FROM saved_views WHERE id = ?', [id]);
+    if (!existing) return;
+
+    const newName = name !== undefined ? name : existing.name;
+    const newPayload = payload !== undefined ? JSON.stringify(payload) : existing.payload;
+    const now = Date.now();
+
+    await db.runAsync(
+        'UPDATE saved_views SET name = ?, payload = ?, updatedAt = ? WHERE id = ?',
+        [newName, newPayload, now, id]
+    );
+}
+
+export async function deleteSavedView(id: string): Promise<void> {
+    const db = await getDb();
+    await db.runAsync('DELETE FROM saved_views WHERE id = ?', [id]);
+}
+
+// --- Bulk Operations ---
+export async function batchUpdateStatus(ids: string[], status: CouponStatus): Promise<void> {
+    if (ids.length === 0) return;
+    const db = await getDb();
+    const placeholders = ids.map(() => '?').join(',');
+    const now = new Date().toISOString();
+
+    // For 'used' status, we also update usedAt
+    if (status === 'used') {
+        const query = `UPDATE coupons SET status = ?, usedAt = ?, updatedAt = ? WHERE id IN (${placeholders})`;
+        await db.runAsync(query, [status, now, Date.now(), ...ids]);
+    } else if (status === 'active') {
+        // Clear usedAt when reverting to active
+        const query = `UPDATE coupons SET status = ?, usedAt = NULL, updatedAt = ? WHERE id IN (${placeholders})`;
+        await db.runAsync(query, [status, Date.now(), ...ids]);
+    } else {
+        // expired or any other status: do NOT touch usedAt
+        const query = `UPDATE coupons SET status = ?, updatedAt = ? WHERE id IN (${placeholders})`;
+        await db.runAsync(query, [status, Date.now(), ...ids]);
+    }
+}
+
+export async function batchDelete(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    const db = await getDb();
+    const placeholders = ids.map(() => '?').join(',');
+    await db.runAsync(`DELETE FROM coupons WHERE id IN (${placeholders})`, ids);
+}
+
+export async function batchAddTag(ids: string[], tag: string): Promise<void> {
+    if (ids.length === 0) return;
+    const db = await getDb();
+    const placeholders = ids.map(() => '?').join(',');
+    const rows = await db.getAllAsync<{ id: string, tags: string | null }>(`SELECT id, tags FROM coupons WHERE id IN (${placeholders})`, ids);
+
+    const { dedupeTags } = await import('./tags');
+
+    // A single transaction for efficiency
+    await db.withTransactionAsync(async () => {
+        for (const row of rows) {
+            let currentTags: string[] = [];
+            if (row.tags) {
+                try { currentTags = JSON.parse(row.tags); } catch (e) { }
+            }
+            const updatedTags = dedupeTags([...currentTags, tag]);
+            await db.runAsync('UPDATE coupons SET tags = ?, updatedAt = ? WHERE id = ?', [JSON.stringify(updatedTags), Date.now(), row.id]);
+        }
+    });
+}
+
+export async function batchRemoveTag(ids: string[], tagToRemove: string): Promise<void> {
+    if (ids.length === 0) return;
+    const db = await getDb();
+    const placeholders = ids.map(() => '?').join(',');
+    const rows = await db.getAllAsync<{ id: string, tags: string | null }>(`SELECT id, tags FROM coupons WHERE id IN (${placeholders})`, ids);
+
+    const { normalizeTag } = await import('./tags');
+    const normalizedTarget = normalizeTag(tagToRemove);
+
+    await db.withTransactionAsync(async () => {
+        for (const row of rows) {
+            if (!row.tags) continue;
+            let currentTags: string[] = [];
+            try { currentTags = JSON.parse(row.tags); } catch (e) { continue; }
+            const updatedTags = currentTags.filter(t => normalizeTag(t) !== normalizedTarget);
+            await db.runAsync('UPDATE coupons SET tags = ?, updatedAt = ? WHERE id = ?', [JSON.stringify(updatedTags), Date.now(), row.id]);
+        }
+    });
 }
 
 export async function clearDb(): Promise<void> {

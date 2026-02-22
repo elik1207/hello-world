@@ -11,15 +11,16 @@ import { computeQualityFlags } from '../lib/ai/qualityFlags';
 interface AddViaAIPageProps {
     onSave: (data: Omit<Coupon, 'id' | 'createdAt' | 'updatedAt' | 'status'>) => void;
     onCancel: () => void;
+    initialText?: string;
 }
 
 type WizardStep = 'input' | 'clarify' | 'preview';
 
-export function AddViaAIPage({ onSave, onCancel }: AddViaAIPageProps) {
+export function AddViaAIPage({ onSave, onCancel, initialText }: AddViaAIPageProps) {
     const [step, setStep] = useState<WizardStep>('input');
 
     // Input State
-    const [rawText, setRawText] = useState('');
+    const [rawText, setRawText] = useState(initialText || '');
     const [sourceType, setSourceType] = useState<SourceType>('whatsapp');
 
     // Draft State
