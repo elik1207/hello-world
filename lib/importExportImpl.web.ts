@@ -1,4 +1,4 @@
-import { getCoupons } from './storage';
+import { getCoupons } from './db';
 
 export async function exportWallet(): Promise<boolean> {
     try {

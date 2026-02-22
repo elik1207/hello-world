@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { AlertCircle } from 'lucide-react-native';
 import { trackEvent } from '../lib/analytics';
+import * as Sentry from '@sentry/react-native';
 
 interface Props {
     children: React.ReactNode;
@@ -26,13 +27,13 @@ export class ErrorBoundary extends React.Component<Props, State> {
     }
 
     componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-        // Log the error to our centralized system
-        // TODO: Integrate Sentry or native crash reporting here
         trackEvent('parse_fail', {
             error: 'ui_crash',
             errorMessage: error.message,
             componentStack: errorInfo.componentStack?.substring(0, 500)
         });
+
+        Sentry.captureException(error);
         console.error('[ErrorBoundary Caught Cash]', error, errorInfo);
     }
 

@@ -2,7 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { View, Alert } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import type { Coupon } from './lib/types';
-import { getCoupons, saveCoupons, clearCoupons, importCoupons, generateId } from './lib/storage';
+import { initDb, getCoupons, upsertCoupon, deleteCoupon, clearDb, isDuplicateFingerprint } from './lib/db';
+import { generateFingerprint } from './lib/fingerprint';
+import { generateId } from './lib/utils';
 import { exportWallet, importWalletFile } from './lib/importExport';
 import { BottomNav } from './components/BottomNav';
 import { ConfirmDialog } from './components/ConfirmDialog';
@@ -11,12 +13,27 @@ import { AddEditPage } from './pages/AddEditPage';
 import { AddViaAIPage } from './pages/AddViaAIPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import * as Sentry from '@sentry/react-native';
 
 import './global-css';
 
+Sentry.init({
+    dsn: process.env.EXPO_PUBLIC_SENTRY_DSN || 'https://dummy@o0.ingest.sentry.io/0',
+    debug: __DEV__,
+    beforeSend(event) {
+        // Sanitize PII
+        if (event.request) delete event.request.data;
+        if (event.user) {
+            delete event.user.email;
+            delete event.user.ip_address;
+        }
+        return event;
+    }
+});
+
 type AppView = 'wallet' | 'add' | 'add-ai' | 'settings';
 
-export default function App() {
+function App() {
     const [coupons, setCoupons] = useState<Coupon[]>([]);
     const [view, setView] = useState<AppView>('wallet');
     const [editingCoupon, setEditingCoupon] = useState<Coupon | undefined>(undefined);
@@ -24,54 +41,62 @@ export default function App() {
     const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
 
     useEffect(() => {
-        getCoupons().then(setCoupons);
+        initDb().then(() => getCoupons().then(setCoupons)).catch(console.error);
     }, []);
-
-    useEffect(() => {
-        saveCoupons(coupons);
-    }, [coupons]);
 
     const handleNavChange = (newView: AppView) => {
         if (newView === 'add') setEditingCoupon(undefined);
         setView(newView);
     };
 
-    const handleSave = (data: Omit<Coupon, 'id' | 'createdAt' | 'updatedAt' | 'status'>) => {
+    const handleSave = async (data: Omit<Coupon, 'id' | 'createdAt' | 'updatedAt' | 'status'>) => {
         const now = Date.now();
         if (editingCoupon) {
-            setCoupons((curr) =>
-                curr.map((c) => (c.id === editingCoupon.id ? { ...c, ...data, updatedAt: now } : c))
-            );
+            const updated: Coupon = { ...editingCoupon, ...data, updatedAt: now };
+            const expiryKey = 'expirationDate' in updated ? (updated as any).expirationDate : updated.expiryDate;
+            const fp = await generateFingerprint(updated.store, updated.discountValue || updated.initialValue, updated.code, expiryKey);
+
+            await upsertCoupon(updated, fp);
+            setCoupons((curr) => curr.map((c) => (c.id === editingCoupon.id ? updated : c)));
         } else {
             // Phase 4: True Idempotency Enforcement
-            setCoupons((curr) => {
-                if (data.idempotencyKey && curr.some(c => c.idempotencyKey === data.idempotencyKey)) {
-                    console.log('[App] Idempotent save blocked duplicate:', data.idempotencyKey);
-                    return curr;
-                }
+            if (data.idempotencyKey && coupons.some(c => c.idempotencyKey === data.idempotencyKey)) {
+                console.log('[App] Idempotent save blocked duplicate:', data.idempotencyKey);
+                setView('wallet');
+                return;
+            }
 
-                const newCoupon: Coupon = {
-                    id: generateId(),
-                    ...data,
-                    status: 'active',
-                    createdAt: now,
-                    updatedAt: now,
-                };
-                return [newCoupon, ...curr];
-            });
+            // Phase 6: Fingerprint Deduplication
+            const expiryKey = 'expirationDate' in data ? (data as any).expirationDate : data.expiryDate;
+            const fp = await generateFingerprint(data.store, data.discountValue || data.initialValue, data.code, expiryKey);
+
+            if (await isDuplicateFingerprint(fp)) {
+                Alert.alert('Duplicate Found', 'This gift or voucher already exists in your wallet.');
+                return; // Block save early preventing UI switch
+            }
+
+            const newCoupon: Coupon = {
+                id: generateId(),
+                ...data,
+                status: 'active',
+                createdAt: now,
+                updatedAt: now,
+            };
+
+            await upsertCoupon(newCoupon, fp);
+            setCoupons((curr) => [newCoupon, ...curr]);
         }
         setView('wallet');
         setEditingCoupon(undefined);
     };
 
-    const handleToggleStatus = (coupon: Coupon) => {
-        setCoupons((curr) =>
-            curr.map((c) =>
-                c.id !== coupon.id
-                    ? c
-                    : { ...c, status: c.status === 'used' ? 'active' : 'used', updatedAt: Date.now() }
-            )
-        );
+    const handleToggleStatus = async (coupon: Coupon) => {
+        const updated: Coupon = { ...coupon, status: coupon.status === 'used' ? 'active' : 'used', updatedAt: Date.now() };
+        const expiryKey = 'expirationDate' in updated ? (updated as any).expirationDate : updated.expiryDate;
+        const fp = await generateFingerprint(updated.store, updated.discountValue || updated.initialValue, updated.code, expiryKey);
+
+        await upsertCoupon(updated, fp);
+        setCoupons((curr) => curr.map((c) => c.id !== coupon.id ? c : updated));
     };
 
     const handleExport = useCallback(async () => {
@@ -82,7 +107,10 @@ export default function App() {
     const handleImport = async () => {
         const content = await importWalletFile();
         if (content) {
-            const ok = await importCoupons(content);
+            // We need to implement importCoupons logic correctly in db or importExportImpl.
+            // Placeholder for now. We will call an async db method.
+            const { importCouponsToDb } = await import('./lib/db');
+            const ok = await importCouponsToDb(content);
             if (ok) {
                 const updated = await getCoupons();
                 setCoupons(updated);
@@ -94,7 +122,7 @@ export default function App() {
     };
 
     const handleClearData = async () => {
-        await clearCoupons();
+        await clearDb();
         setCoupons([]);
         setIsClearDialogOpen(false);
     };
@@ -140,7 +168,13 @@ export default function App() {
                 isOpen={!!deleteId}
                 title="Delete Coupon?"
                 message="This action cannot be undone."
-                onConfirm={() => { setCoupons((curr) => curr.filter((c) => c.id !== deleteId)); setDeleteId(null); }}
+                onConfirm={async () => {
+                    if (deleteId) {
+                        await deleteCoupon(deleteId);
+                        setCoupons((curr) => curr.filter((c) => c.id !== deleteId));
+                    }
+                    setDeleteId(null);
+                }}
                 onCancel={() => setDeleteId(null)}
                 confirmLabel="Delete"
                 isDestructive
@@ -158,3 +192,5 @@ export default function App() {
         </View>
     );
 }
+
+export default Sentry.wrap(App);

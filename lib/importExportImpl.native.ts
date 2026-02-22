@@ -1,7 +1,7 @@
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
-import { getCoupons } from './storage';
+import { getCoupons } from './db';
 
 export async function exportWallet(): Promise<boolean> {
     try {
