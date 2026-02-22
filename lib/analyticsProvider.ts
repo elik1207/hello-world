@@ -47,6 +47,11 @@ const ALLOWLIST: Set<string> = new Set([
     'missingFieldCountAtSave',
     'needsReviewFieldCountAtSave',
     'editedFieldCount',
+    // Status Transitions
+    'from',
+    'to',
+    'count',
+    'trigger',
     // Infrastructure/Safety
     'error', // safe error labels
     'errorMessage',
