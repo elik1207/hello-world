@@ -47,3 +47,23 @@ Recreate these 5 core KPIs in your PostHog instance:
 **Insight Type:** Trends (Breakdown by Property)
 - **Event:** `extract_request`, `llm_used`, `extract_fallback`, `extract_fail`
 *Plot these on a single line chart to visualize the health of your parser pipelines. A high ratio of `extract_fallback` relative to `extract_request` means the OpenAI LLM is consistently timing out or failing validation, forcing the system back to deterministic regex.*
+
+---
+
+## Developer Verification (Debug Mode)
+
+To verify analytics events end-to-end without exposing production keys or polluting PostHog metrics, you can enable **Debug Mode**. This forces the analytics adapters to `console.log` the *exact, sanitized payload* that survives the privacy `ALLOWLIST` filters.
+
+**Frontend (Expo):**
+```properties
+EXPO_PUBLIC_ANALYTICS_DEBUG=true
+```
+
+**Backend (Node.js):**
+```properties
+ANALYTICS_DEBUG=true
+```
+
+When enabled, watch your terminal for `[ANALYTICS HTTP] -> event_name` (if PostHog is active and firing) or `[ANALYTICS LOCAL] event_name` (if falling back to console).
+
+**Privacy Guarantee:** If a property like `rawText` or an AI Error stack trace appears in a localized debug log, the PII filter is broken. The `ALLOWLIST` operates on a strict *drop-by-default* philosophy—only exact string matches to explicit KPI requirements (e.g. `time_to_save_ms` or `missingFieldCount`) survive the event pipeline.
