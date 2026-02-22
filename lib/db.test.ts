@@ -44,6 +44,34 @@ describe('lib/db - Migrations & Deduplication', () => {
         expect(mockExecAsync).toHaveBeenCalledWith('PRAGMA user_version = 2');
     });
 
+    it('v3 to v4 migration safely adds quality flag columns and calculates backfills', async () => {
+        // Mock starting from version 3
+        mockGetFirstAsync.mockResolvedValueOnce({ user_version: 3 });
+
+        // Mock the existing rows returned for the backfill script
+        mockGetAllAsync.mockResolvedValueOnce([
+            { id: 'rowA', store: null, title: null, discountValue: null, initialValue: null, code: null }, // Missing everything -> 3 missing
+            { id: 'rowB', store: 'KSP', title: 'Tech', discountValue: 50, initialValue: null, code: 'CODE123' } // Valid -> 0 missing
+        ]);
+
+        const { initDb } = await import('./db');
+        await initDb();
+
+        // Assert schema modification occurs
+        expect(mockExecAsync).toHaveBeenCalledWith(expect.stringContaining('ALTER TABLE coupons ADD COLUMN missingFieldCount INTEGER'));
+        expect(mockExecAsync).toHaveBeenCalledWith('PRAGMA user_version = 4');
+
+        // Assert backfill runs natively across simulated rows correctly
+        expect(mockRunAsync).toHaveBeenCalledWith(
+            expect.stringContaining('UPDATE coupons SET missingFieldCount = ?, needsReviewFieldCount = ? WHERE id = ?'),
+            [3, 0, 'rowA']
+        );
+        expect(mockRunAsync).toHaveBeenCalledWith(
+            expect.stringContaining('UPDATE coupons SET missingFieldCount = ?, needsReviewFieldCount = ? WHERE id = ?'),
+            [0, 0, 'rowB']
+        );
+    });
+
     it('import validation and dedupe logic skips duplicates', async () => {
         // Mock that fingerprint check returns true (is a duplicate)
         mockGetFirstAsync.mockResolvedValueOnce({ id: 'existing_id' }); // isDup = true for the item loop inside import
