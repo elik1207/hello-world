@@ -29,6 +29,7 @@ export function extractGiftFromText(text: string, sourceType: SourceType = 'othe
         sourceText: text,
         assumptions: [],
         missingRequiredFields: [],
+        inferredFields: [],
         questions: [],
     };
 
@@ -58,6 +59,7 @@ export function extractGiftFromText(text: string, sourceType: SourceType = 'othe
             } else {
                 draft.currency = 'ILS';
                 draft.assumptions!.push("Detected local currency indicator, set to ILS.");
+                draft.inferredFields!.push('currency');
             }
         }
     } else {
@@ -68,6 +70,7 @@ export function extractGiftFromText(text: string, sourceType: SourceType = 'othe
             draft.amount = parseInt(potentialAmounts[0], 10);
             draft.currency = 'ILS';
             draft.assumptions!.push(`Found number ${draft.amount} without currency, assumed ILS amount.`);
+            draft.inferredFields!.push('amount', 'currency');
             confidencePoints += 0.5;
         }
     }
@@ -100,6 +103,7 @@ export function extractGiftFromText(text: string, sourceType: SourceType = 'othe
             // Suspicious code (no digits but matched indicator)
             draft.code = potentialCode;
             draft.assumptions!.push("Code looks suspicious (no digits), marked for review.");
+            draft.inferredFields!.push('code');
             confidencePoints += 0.5;
             foundCode = true;
         }
@@ -125,8 +129,11 @@ export function extractGiftFromText(text: string, sourceType: SourceType = 'othe
                 const isSuspicious = !/\d/.test(validCodes[0]) || validCodes[0].length < 6;
                 if (isSuspicious) {
                     draft.assumptions!.push(`Found isolated string '${validCodes[0]}', code might be suspicious.`);
+                    draft.inferredFields!.push('code');
                 } else {
                     draft.assumptions!.push(`Found isolated string '${validCodes[0]}', assuming it's the code.`);
+                    // Even if not completely suspicious, an isolated string is an inference
+                    draft.inferredFields!.push('code');
                 }
                 confidencePoints += 0.5;
             }
@@ -148,6 +155,7 @@ export function extractGiftFromText(text: string, sourceType: SourceType = 'othe
             draft.expirationDate = parsedContextDate.date.toISOString();
             confidencePoints++;
             draft.assumptions!.push(`Assumed date format ${parsedContextDate.formatUsed} for ${textContextDate[1]}`);
+            draft.inferredFields!.push('expirationDate');
         }
     } else if (dateMatches.length > 0) {
         // Take the latest date found to be safe, or just the first one if ambiguous
@@ -168,6 +176,7 @@ export function extractGiftFromText(text: string, sourceType: SourceType = 'othe
             draft.expirationDate = latestDate.toISOString();
             // ASSUMPTION: Explicitly record ambiguous date interpretation 
             draft.assumptions!.push(`Assumed date format ${latestFormat} for ${originalString}`);
+            draft.inferredFields!.push('expirationDate');
             confidencePoints += 0.5; // Contextless dates have slightly lower confidence
         }
     }

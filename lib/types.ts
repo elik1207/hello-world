@@ -54,5 +54,6 @@ export interface GiftOrVoucherDraft {
     confidence: number; // 0..1
     assumptions: string[];
     missingRequiredFields: (keyof GiftOrVoucherDraft)[];
+    inferredFields?: (keyof GiftOrVoucherDraft)[];
     questions: ClarificationQuestion[];
 }

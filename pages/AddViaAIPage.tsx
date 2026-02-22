@@ -6,6 +6,7 @@ import { extractGiftFromText } from '../lib/ai/extractGiftFromText';
 import { LinearGradient } from 'expo-linear-gradient';
 import { trackEvent, sessionId } from '../lib/analytics';
 import { redactPII } from '../lib/redact';
+import { computeQualityFlags } from '../lib/ai/qualityFlags';
 
 interface AddViaAIPageProps {
     onSave: (data: Omit<Coupon, 'id' | 'createdAt' | 'updatedAt' | 'status'>) => void;
@@ -80,21 +81,22 @@ export function AddViaAIPage({ onSave, onCancel }: AddViaAIPageProps) {
             }
 
             setDraft(result);
+            setEditedFields(new Set()); // Reset edits
 
-            // Phase 5 Analytics Payload Upgrade for parse_success
-            const isCodeSuspicious = result.assumptions?.some(a => a.toLowerCase().includes('code looks suspicious')) || false;
+            // Phase 5.1: Centralized Quality Flags
+            const flags = computeQualityFlags(result, new Set());
 
             trackEvent('parse_success', {
                 requestId,
                 confidentScore: result.confidence,
-                missingFieldCount: result.missingRequiredFields?.length || 0,
-                hasAmount: result.amount !== undefined,
-                hasCode: !!result.code,
-                hasExpiry: !!result.expirationDate,
-                needsReviewFieldCount: result.confidence < 0.6 ? 4 : (isCodeSuspicious ? 1 : 0) // rough heuristic for tracking
+                missingFieldCount: flags.missingFieldCount,
+                hasAmount: flags.hasAmount,
+                hasCode: flags.hasCode,
+                hasExpiry: flags.hasExpiry,
+                needsReviewFieldCount: flags.needsReviewFieldCount
             });
 
-            if (result.missingRequiredFields && result.missingRequiredFields.includes('title') && result.questions && result.questions.length > 0) {
+            if (flags.missingFields.includes('title') && result.questions && result.questions.length > 0) {
                 setStep('clarify');
                 trackEvent('clarify_shown', { requestId, reason: 'missing_title', questionCount: result.questions.length });
             } else {
@@ -146,12 +148,13 @@ export function AddViaAIPage({ onSave, onCancel }: AddViaAIPageProps) {
             onSave(finalItem);
 
             if (flowStartTime && currentRequestId) {
+                const finalFlags = computeQualityFlags(draft, editedFields);
                 trackEvent('save_success', {
                     requestId: currentRequestId,
                     time_to_save_ms: Date.now() - flowStartTime,
-                    missingFieldCountAtSave: draft.missingRequiredFields?.filter(f => !editedFields.has(f)).length || 0,
+                    missingFieldCountAtSave: finalFlags.missingFieldCount,
                     editedFieldCount: editedFields.size,
-                    needsReviewFieldCountAtSave: (draft.confidence < 0.6 && editedFields.size === 0) ? 1 : 0
+                    needsReviewFieldCountAtSave: finalFlags.needsReviewFieldCount
                 });
             }
         } catch (saveError: any) {
@@ -303,14 +306,12 @@ export function AddViaAIPage({ onSave, onCancel }: AddViaAIPageProps) {
                         </Text>
                     </View>
 
-                    {/* Helper to check if an AI assumption directly targets a field */}
+                    {/* Render helper for centralized quality flags */}
                     {(() => {
-                        const isFieldMissing = (field: string) => !editedFields.has(field) && draft.missingRequiredFields?.includes(field as any);
-                        const isFieldInferred = (field: string, keywords: string[]) =>
-                            !editedFields.has(field) && (draft.assumptions?.some(a => keywords.some(k => a.toLowerCase().includes(k))) || draft.confidence < 0.6);
+                        const flags = computeQualityFlags(draft, editedFields);
 
-                        const renderIndicator = (isMissing: boolean, isInferred: boolean) => {
-                            if (isMissing) {
+                        const renderIndicator = (fieldKey: string) => {
+                            if (flags.missingFields.includes(fieldKey)) {
                                 return (
                                     <View style={{ backgroundColor: '#7f1d1d', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                                         <AlertCircle size={10} color="#fca5a5" />
@@ -318,7 +319,7 @@ export function AddViaAIPage({ onSave, onCancel }: AddViaAIPageProps) {
                                     </View>
                                 );
                             }
-                            if (isInferred) {
+                            if (flags.needsReviewFields.includes(fieldKey)) {
                                 return (
                                     <View style={{ backgroundColor: '#92400e', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                                         <AlertCircle size={10} color="#fcd34d" />
@@ -329,27 +330,16 @@ export function AddViaAIPage({ onSave, onCancel }: AddViaAIPageProps) {
                             return null;
                         };
 
-                        const missingTitle = isFieldMissing('title');
-                        const inferredTitle = isFieldInferred('title', ['title', 'merchant']);
-                        const missingMerchant = isFieldMissing('merchant');
-                        const inferredMerchant = isFieldInferred('merchant', ['merchant']);
-                        const missingAmount = isFieldMissing('amount');
-                        const inferredAmount = isFieldInferred('amount', ['amount', 'currency', 'ils', 'eur', 'usd', 'number']);
-                        const missingDate = isFieldMissing('expirationDate');
-                        const inferredDate = isFieldInferred('expirationDate', ['date', 'format']);
-                        const missingCode = isFieldMissing('code');
-                        const inferredCode = isFieldInferred('code', ['code', 'isolated string', 'suspicious']);
-
                         return (
                             <View style={{ backgroundColor: '#252849', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#3c4270', marginBottom: 16 }}>
                                 {/* Title Row */}
                                 <View style={{ marginBottom: 16 }}>
                                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                                         <Text style={{ fontSize: 12, color: '#a0aed4' }}>Title</Text>
-                                        {renderIndicator(missingTitle, inferredTitle)}
+                                        {renderIndicator('title')}
                                     </View>
                                     <TextInput
-                                        style={{ color: '#f8fafc', fontSize: 18, fontWeight: '600', backgroundColor: '#1a1d38', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: missingTitle ? '#f87171' : inferredTitle ? '#92400e' : 'transparent' }}
+                                        style={{ color: '#f8fafc', fontSize: 18, fontWeight: '600', backgroundColor: '#1a1d38', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: flags.missingFields.includes('title') ? '#f87171' : flags.needsReviewFields.includes('title') ? '#92400e' : 'transparent' }}
                                         value={draft.title || ''}
                                         onChangeText={(val) => {
                                             setDraft({ ...draft, title: val });
@@ -363,10 +353,10 @@ export function AddViaAIPage({ onSave, onCancel }: AddViaAIPageProps) {
                                 <View style={{ marginBottom: 16 }}>
                                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                                         <Text style={{ fontSize: 12, color: '#a0aed4' }}>Merchant / Store</Text>
-                                        {renderIndicator(missingMerchant, inferredMerchant)}
+                                        {renderIndicator('merchant')}
                                     </View>
                                     <TextInput
-                                        style={{ color: '#f8fafc', fontSize: 16, backgroundColor: '#1a1d38', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: missingMerchant ? '#f87171' : inferredMerchant ? '#92400e' : 'transparent' }}
+                                        style={{ color: '#f8fafc', fontSize: 16, backgroundColor: '#1a1d38', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: flags.missingFields.includes('merchant') ? '#f87171' : flags.needsReviewFields.includes('merchant') ? '#92400e' : 'transparent' }}
                                         value={draft.merchant || ''}
                                         onChangeText={(val) => {
                                             setDraft({ ...draft, merchant: val });
@@ -382,10 +372,10 @@ export function AddViaAIPage({ onSave, onCancel }: AddViaAIPageProps) {
                                     <View style={{ flex: 1 }}>
                                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                                             <Text style={{ fontSize: 12, color: '#a0aed4' }}>Amount ({draft.currency || 'ILS'})</Text>
-                                            {renderIndicator(missingAmount, inferredAmount)}
+                                            {renderIndicator('amount')}
                                         </View>
                                         <TextInput
-                                            style={{ color: '#f8fafc', fontSize: 16, backgroundColor: '#1a1d38', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: missingAmount ? '#f87171' : inferredAmount ? '#92400e' : 'transparent' }}
+                                            style={{ color: '#f8fafc', fontSize: 16, backgroundColor: '#1a1d38', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: flags.missingFields.includes('amount') ? '#f87171' : flags.needsReviewFields.includes('amount') ? '#92400e' : 'transparent' }}
                                             value={draft.amount !== undefined ? draft.amount.toString() : ''}
                                             onChangeText={(val) => {
                                                 setDraft({ ...draft, amount: val ? parseFloat(val) : undefined });
@@ -400,10 +390,10 @@ export function AddViaAIPage({ onSave, onCancel }: AddViaAIPageProps) {
                                     <View style={{ flex: 1 }}>
                                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                                             <Text style={{ fontSize: 12, color: '#a0aed4' }}>Expiry Date</Text>
-                                            {renderIndicator(missingDate, inferredDate)}
+                                            {renderIndicator('expirationDate')}
                                         </View>
                                         <TextInput
-                                            style={{ color: '#f8fafc', fontSize: 16, backgroundColor: '#1a1d38', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: missingDate ? '#f87171' : inferredDate ? '#92400e' : 'transparent' }}
+                                            style={{ color: '#f8fafc', fontSize: 16, backgroundColor: '#1a1d38', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: flags.missingFields.includes('expirationDate') ? '#f87171' : flags.needsReviewFields.includes('expirationDate') ? '#92400e' : 'transparent' }}
                                             value={draft.expirationDate ? draft.expirationDate.split('T')[0] : ''}
                                             onChangeText={(val) => {
                                                 setDraft({ ...draft, expirationDate: val ? `${val}T00:00:00.000Z` : undefined });
@@ -419,10 +409,10 @@ export function AddViaAIPage({ onSave, onCancel }: AddViaAIPageProps) {
                                 <View style={{ marginBottom: 16 }}>
                                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                                         <Text style={{ fontSize: 12, color: '#a0aed4' }}>Coupon Code</Text>
-                                        {renderIndicator(missingCode, inferredCode)}
+                                        {renderIndicator('code')}
                                     </View>
                                     <TextInput
-                                        style={{ color: '#a78bfa', fontSize: 16, fontWeight: '700', backgroundColor: '#1a1d38', padding: 10, borderRadius: 8, letterSpacing: 1, borderWidth: 1, borderColor: missingCode ? '#f87171' : inferredCode ? '#92400e' : 'transparent' }}
+                                        style={{ color: '#a78bfa', fontSize: 16, fontWeight: '700', backgroundColor: '#1a1d38', padding: 10, borderRadius: 8, letterSpacing: 1, borderWidth: 1, borderColor: flags.missingFields.includes('code') ? '#f87171' : flags.needsReviewFields.includes('code') ? '#92400e' : 'transparent' }}
                                         value={draft.code || ''}
                                         onChangeText={(val) => {
                                             setDraft({ ...draft, code: val });

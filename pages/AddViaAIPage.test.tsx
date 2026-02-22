@@ -60,7 +60,7 @@ describe('AddViaAIPage - UX Refinement Tests', () => {
         });
 
         const missingBadges = getAllByText('חסר');
-        expect(missingBadges.length).toBe(2);
+        expect(missingBadges.length).toBe(1);
         expect(queryByText('What is the title?')).toBeNull();
     });
 
@@ -132,7 +132,7 @@ describe('AddViaAIPage - UX Refinement Tests', () => {
             expect(onSaveMock).toHaveBeenCalled();
             expect(analytics.trackEvent).toHaveBeenCalledWith('save_success', expect.objectContaining({
                 editedFieldCount: 1,
-                missingFieldCountAtSave: 1
+                missingFieldCountAtSave: 0
             }));
         });
     });
