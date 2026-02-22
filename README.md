@@ -159,3 +159,8 @@ npm run web
 ```bash
 npm audit --omit=dev --audit-level=high
 ```
+
+### Phase 4: Production Hardening
+Currently, the app requires minimal external infrastructure to maintain speed and safety:
+- **Session Id Propagation:** Every client launch generates a unique `sessionId` which is passed alongside a `requestId` to the backend via the `X-Session-ID` header. This ensures isolated backend logs correlate strictly with frontend flows without relying on raw PII text.
+- **Idempotency Key:** To prevent duplicate wallet entries resulting from double-saving or UI lag, every AI extraction flow generates an `idempotencyKey`. It's stored with the local Coupon/Voucher entity; if another save attempt is made with the identical key before the screen resets, it is safely blocked.
