@@ -1,15 +1,10 @@
-import { getCoupons } from './db';
+import { generateExportPayload } from './db';
 
 export async function exportWallet(): Promise<boolean> {
     try {
-        const coupons = await getCoupons();
-        const data = {
-            schemaVersion: 2,
-            exportedAt: new Date().toISOString(),
-            items: coupons
-        };
+        const data = await generateExportPayload();
         const jsonStr = JSON.stringify(data, null, 2);
-        const filename = `coupon-wallet-${new Date().toISOString().split('T')[0]}.json`;
+        const filename = `coupon - wallet - ${new Date().toISOString().split('T')[0]}.json`;
 
         const blob = new Blob([jsonStr], { type: 'application/json' });
         const url = URL.createObjectURL(blob);

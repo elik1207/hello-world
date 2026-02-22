@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { initDb, importCouponsToDb, isDuplicateFingerprint } from './db';
+import { initDb, importCouponsToDb, generateExportPayload, isDuplicateFingerprint } from './db';
 
 // Mock sqlite to test logic safely
 const mockExecAsync = jest.fn();
@@ -95,5 +95,47 @@ describe('lib/db - Migrations & Deduplication', () => {
         expect(reportA.imported).toBe(0);
         expect(reportB.invalidItems).toBeGreaterThan(0);
         expect(reportB.imported).toBe(0);
+    });
+
+    it('export payload uses schemaVersion 2 and ISO exportedAt', async () => {
+        mockGetAllAsync.mockResolvedValueOnce([
+            { id: 'item1', title: 'Gift Card', status: 'active' }
+        ]);
+
+        const payload = await generateExportPayload();
+
+        expect(payload.schemaVersion).toBe(2);
+        expect(Array.isArray(payload.items)).toBe(true);
+        expect(payload.items.length).toBe(1);
+
+        // Assert exportedAt is a valid ISO date
+        expect(typeof payload.exportedAt).toBe('string');
+        const parsedDate = Date.parse(payload.exportedAt);
+        expect(Number.isNaN(parsedDate)).toBe(false);
+    });
+
+    it('import dedupe by idempotencyKey increments skippedDuplicateIdempotencyKey', async () => {
+        // mockGetFirstAsync will be called multiple times: 
+        // 1. isDuplicateIdempotencyKey -> return existing match
+        // 2. We shouldn't hit isDuplicateFingerprint if it skips early, but returning null just in case
+        mockGetFirstAsync.mockResolvedValueOnce({ id: 'existing_idem_id' });
+
+        const jsonStr = JSON.stringify({
+            schemaVersion: 2,
+            items: [{
+                id: 'new_id',
+                title: 'Duplicate Try',
+                status: 'active',
+                idempotencyKey: 'idem-123',
+                amount: 100 // different details, would yield different fingerprint
+            }]
+        });
+
+        const report = await importCouponsToDb(jsonStr);
+
+        expect(report.imported).toBe(0);
+        expect(report.skippedDuplicateIdempotencyKey).toBe(1);
+        expect(report.skippedDuplicateFingerprint).toBe(0);
+        expect(mockRunAsync).not.toHaveBeenCalled(); // No insertion
     });
 });

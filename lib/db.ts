@@ -109,6 +109,15 @@ export async function getCoupons(): Promise<Coupon[]> {
     } as Coupon));
 }
 
+export async function generateExportPayload() {
+    const coupons = await getCoupons();
+    return {
+        schemaVersion: 2,
+        exportedAt: new Date().toISOString(),
+        items: coupons
+    };
+}
+
 export async function isDuplicateFingerprint(fingerprint: string): Promise<boolean> {
     const db = await getDb();
     const existing = await db.getFirstAsync<{ id: string }>('SELECT id FROM coupons WHERE fingerprint = ?', [fingerprint]);
