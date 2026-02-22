@@ -65,54 +65,64 @@ Source Type: ${sourceType}
 Raw Text: ${text}
 `;
 
-    // Abort controller for safe timeout handling
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const maxAttempts = 2; // 1 initial attempt + 1 retry
 
-    try {
-        const response = await openai.chat.completions.create({
-            model: model,
-            messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: userPrompt }
-            ],
-            response_format: { type: 'json_object' },
-            temperature: 0.1, // Near-deterministic outputs
-        }, {
-            signal: controller.signal
-        });
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        // Abort controller for safe timeout handling per attempt
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-        clearTimeout(timeout);
+        try {
+            const response = await openai.chat.completions.create({
+                model: model,
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userPrompt }
+                ],
+                response_format: { type: 'json_object' },
+                temperature: 0.1, // Near-deterministic outputs
+            }, {
+                signal: controller.signal
+            });
 
-        const content = response.choices[0]?.message?.content;
-        if (!content) {
-            throw new Error('LLM returned empty response.');
+            clearTimeout(timeout);
+
+            const content = response.choices[0]?.message?.content;
+            if (!content) {
+                throw new Error('LLM returned empty response.');
+            }
+
+            // Zod validation strictly enforces the Phase 1 Output schema
+            const parsedJson = JSON.parse(content);
+            const validated = ExpectedResponseSchema.parse(parsedJson);
+
+            // Map to exact required interface
+            return {
+                title: validated.title,
+                merchant: validated.merchant,
+                amount: validated.amount,
+                currency: validated.currency,
+                code: validated.code,
+                expirationDate: validated.expirationDate,
+                sourceType: sourceType,
+                sourceText: text, // Echo back exactly
+                notes: validated.notes,
+                confidence: validated.confidence,
+                assumptions: validated.assumptions,
+                missingRequiredFields: validated.missingRequiredFields || [],
+                questions: validated.questions || [],
+            };
+
+        } catch (e: any) {
+            clearTimeout(timeout);
+            console.warn(`[LLM Attempt ${attempt}] Failed: ${e.message}`);
+
+            if (attempt === maxAttempts) {
+                // Throw out of loop on final failure so the backend catches and falls back to regex
+                throw new Error(`LLM Extraction Failed after ${maxAttempts} attempts: ${e.message}`);
+            }
         }
-
-        // Zod validation strictly enforces the Phase 1 Output schema
-        const parsedJson = JSON.parse(content);
-        const validated = ExpectedResponseSchema.parse(parsedJson);
-
-        // Map to exact required interface
-        return {
-            title: validated.title,
-            merchant: validated.merchant,
-            amount: validated.amount,
-            currency: validated.currency,
-            code: validated.code,
-            expirationDate: validated.expirationDate,
-            sourceType: sourceType,
-            sourceText: text, // Echo back exactly
-            notes: validated.notes,
-            confidence: validated.confidence,
-            assumptions: validated.assumptions,
-            missingRequiredFields: validated.missingRequiredFields || [],
-            questions: validated.questions || [],
-        };
-
-    } catch (e: any) {
-        clearTimeout(timeout);
-        // We throw so that the parent Express route can catch it and fallback to Regex
-        throw new Error(`LLM Extraction Failed: ${e.message}`);
     }
+
+    throw new Error('LLM Extraction Failed: Unexpected execution path.');
 }

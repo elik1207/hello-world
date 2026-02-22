@@ -34,9 +34,23 @@ const extractRequestSchema = z.object({
 app.post('/ai/extract', async (req, res) => {
     const requestId = req.header('X-Request-ID') || Math.random().toString(36).substring(7);
     const clientIp = req.ip || req.socket.remoteAddress;
-    // 1. Privacy logging (do not log explicit source texts)
+
+    // Backend Analytics Logging Helper
+    const trackBackendEvent = (eventName: string, payload: Record<string, any> = {}) => {
+        console.log(`[ANALYTICS] ${eventName}`, JSON.stringify({
+            requestId,
+            timestamp: new Date().toISOString(),
+            ...payload
+        }));
+    };
+
+    trackBackendEvent('extract_request', {
+        sourceLength: req.body.sourceText?.length,
+        provider: process.env.AI_PROVIDER || 'deterministic'
+    });
+
     if (process.env.AI_LOG_LEVEL === 'info') {
-        console.log(`[REQ ${requestId}] Extracting text (length: ${req.body.sourceText?.length}) via ${process.env.AI_PROVIDER || 'deterministic'}`);
+        console.log(`[REQ ${requestId}] Extracting via ${process.env.AI_PROVIDER || 'deterministic'}`);
     }
 
     try {
@@ -51,8 +65,14 @@ app.post('/ai/extract', async (req, res) => {
             try {
                 // Attempt OpenAI extraction strictly
                 draft = await extractWithLlm(sourceText, sourceType as SourceType);
+                trackBackendEvent('llm_used', { success: true });
             } catch (llmError: any) {
                 console.warn(`[REQ ${requestId}] LLM failed (${llmError.message}). Falling back to deterministic regex.`);
+
+                trackBackendEvent('extract_fallback', {
+                    reason: llmError.message?.toLowerCase().includes('timeout') ? 'timeout' : 'provider_error'
+                });
+
                 // Fallback deterministic execution
                 draft = extractGiftFromText(sourceText, sourceType as SourceType);
                 draft.assumptions!.push("LLM output invalid or timed out; fell back to deterministic parsing.");
@@ -68,8 +88,11 @@ app.post('/ai/extract', async (req, res) => {
             validatedDraft = ExpectedResponseSchema.parse(draft);
         } catch (validationError) {
             console.error(`[REQ ${requestId}] Output Validation Error:`, validationError);
+            trackBackendEvent('extract_fail', { reason: 'invalid_json' });
             return res.status(500).json({ error: 'Internal server error: Output validation failed. The parser returned an invalid schema.' });
         }
+
+        trackBackendEvent('extract_success');
 
         // Return the structured Draft identical to the offline flow
         res.json(validatedDraft);
@@ -77,8 +100,9 @@ app.post('/ai/extract', async (req, res) => {
         if (error instanceof z.ZodError) {
             res.status(400).json({ error: 'Invalid request', details: error.flatten() });
         } else {
-            console.error('Extraction Error:', error);
-            res.status(500).json({ error: 'Internal server error during extraction' });
+            console.error(`[REQ ${requestId}] Unhandled Server Error:`, error);
+            trackBackendEvent('extract_fail', { reason: 'server_crash', message: (error as Error).message || 'unknown_error' });
+            res.status(500).json({ error: 'Internal server error' });
         }
     }
 });
