@@ -1,0 +1,60 @@
+{"id":"msg-001","text":"You received a 50 ILS gift card from Steimatzky! Code: ST-9981-22","expected":{"title":"Steimatzky","amount":50,"code":"ST-9981-22","currency":"ILS","type":"gift_card"}}
+{"id":"msg-002","text":"Coffee bean 1+1 free drink voucher, show barcode 0987612344 at register. Valid until 12/2025","expected":{"title":"Coffee bean","amount":null,"code":"0987612344","expiryDate":"2025-12-31","type":"coupon"}}
+{"id":"msg-003","text":"Happy Birthday! Here's a voucher for 100 shekels at Zara. Code: ZR-100-YAY","expected":{"title":"Zara","amount":100,"code":"ZR-100-YAY","type":"gift_card","currency":"ILS"}}
+{"id":"msg-004","text":"Your Amazon package tracking number is 1ZX9981239912. It will arrive tomorrow.","expected":null}
+{"id":"msg-005","text":"פינוק במתנה! שובר זוגי לארוחת בוקר בקפה קפה. קוד קופון: BFAST-2023. בתוקף עד 31.12.24","expected":{"title":"קפה קפה","code":"BFAST-2023","type":"coupon","expiryDate":"2024-12-31"}}
+{"id":"msg-006","text":"הזמנתך לאסף אושרה. מספר אישור: 5918239","expected":null}
+{"id":"msg-007","text":"Get 20% off your next purchase at H&M using code HM20OFF online","expected":{"title":"H&M","code":"HM20OFF","type":"coupon"}}
+{"id":"msg-008","text":"Hey mom, did you buy the milk?","expected":null}
+{"id":"msg-009","text":"Gift for you: 250 NIS at Fox Home. Enjoy! Code: FX-250-9912","expected":{"title":"Fox Home","amount":250,"currency":"ILS","code":"FX-250-9912","type":"gift_card"}}
+{"id":"msg-010","text":"Discount code for KSP: SAVE50 for 50 ILS off orders over 300 ILS.","expected":{"title":"KSP","amount":50,"currency":"ILS","code":"SAVE50","type":"coupon"}}
+{"id":"msg-011","text":"Your Wolt verification code is 881923. Do not share this code.","expected":null}
+{"id":"msg-012","text":"500 שח BUYME פנקו את עצמכם! קוד: 9918-2231-1123-9999 פג תוקף 01/01/2028","expected":{"title":"BUYME","amount":500,"currency":"ILS","code":"9918-2231-1123-9999","type":"gift_card","expiryDate":"2028-01-01"}}
+{"id":"msg-013","text":"Voucher for free dessert at McDonalds. Code: FREE-MC. Valid till end of month.","expected":{"title":"McDonalds","code":"FREE-MC","type":"coupon"}}
+{"id":"msg-014","text":"Please pay your electricity bill of 450 NIS by the 15th.","expected":null}
+{"id":"msg-015","text":"Kastiel gift cert 1500 ILS. Valid 5 years. #CERT-KAS-15","expected":{"title":"Kastiel","amount":1500,"currency":"ILS","code":"#CERT-KAS-15","type":"gift_card"}}
+{"id":"msg-016","text":"Super-Pharm coupon: 10 NIS off Pampers diapers. SHOW CODE 991283 at checkout","expected":{"title":"Super-Pharm","amount":10,"currency":"ILS","code":"991283","type":"coupon"}}
+{"id":"msg-017","text":"Here is your boarding pass for flight LY315 to London.","expected":null}
+{"id":"msg-018","text":"קסטרו - שובר מתנה על סך 300 שח. לממוש הציגו קוד 339-112-9982 בקופה.","expected":{"title":"קסטרו","amount":300,"currency":"ILS","code":"339-112-9982","type":"gift_card"}}
+{"id":"msg-019","text":"1+1 על כרטיסים לסרט בסינמה סיטי מתנת לאומי קארד. להזמנה הקלידו: LEUMI-CINE-12","expected":{"title":"סינמה סיטי","code":"LEUMI-CINE-12","type":"coupon"}}
+{"id":"msg-020","text":"Your appointment with Dr. Cohen is scheduled for 14:00 tomorrow.","expected":null}
+{"id":"msg-021","text":"Shufersal 100 NIS voucher. Code: SHUF-100. Expires 20/05/2025","expected":{"title":"Shufersal","amount":100,"currency":"ILS","code":"SHUF-100","expiryDate":"2025-05-20","type":"gift_card"}}
+{"id":"msg-022","text":"IKEA return credit note. Amount: 45.90 ILS. Receipt barcode: 299182049912","expected":{"title":"IKEA","amount":45,"currency":"ILS","code":"299182049912","type":"store_credit"}}
+{"id":"msg-023","text":"Don't forget to buy bread and eggs from the supermarket.","expected":null}
+{"id":"msg-024","text":"Golf & Co 200 שח מתנה לשנה החדשה. קוד: NEWYEAR-GLF.","expected":{"title":"Golf & Co","amount":200,"currency":"ILS","code":"NEWYEAR-GLF","type":"gift_card"}}
+{"id":"msg-025","text":"Free shipping on Asos with code FREESHIP. Valid till Sunday.","expected":{"title":"Asos","code":"FREESHIP","type":"coupon"}}
+{"id":"msg-026","text":"Your Uber verification code is: 5541.","expected":null}
+{"id":"msg-027","text":"Steam wallet code for $20: XJ92-MKL1-BBQ1","expected":{"title":"Steam","amount":20,"currency":"USD","code":"XJ92-MKL1-BBQ1","type":"gift_card"}}
+{"id":"msg-028","text":"PlayStation Network 50 EUR Top up card: 112A-BVB3-99XL","expected":{"title":"PlayStation Network","amount":50,"currency":"EUR","code":"112A-BVB3-99XL","type":"gift_card"}}
+{"id":"msg-029","text":"I transferred 500 NIS on Bit for the dinner.","expected":null}
+{"id":"msg-030","text":"רמי לוי - קופון 50 שח בקניה מעל 300. להצגה בקופה: RL-50-OFF","expected":{"title":"רמי לוי","amount":50,"currency":"ILS","code":"RL-50-OFF","type":"coupon"}}
+{"id":"msg-031","text":"Mac coupon MAC-LOVE for a free lipstick with any purchase.","expected":{"title":"Mac","code":"MAC-LOVE","type":"coupon"}}
+{"id":"msg-032","text":"Have a great trip! We will water the plants.","expected":null}
+{"id":"msg-033","text":"Tiv Taam holiday voucher 400 NIS. Code: TIV-HOL-2024","expected":{"title":"Tiv Taam","amount":400,"currency":"ILS","code":"TIV-HOL-2024","type":"gift_card"}}
+{"id":"msg-034","text":"Nike store credit: $120. Barcode: 0991827441","expected":{"title":"Nike","amount":120,"currency":"USD","code":"0991827441","type":"store_credit"}}
+{"id":"msg-035","text":"Dinner reservation confirmed for 4 at 8 PM.","expected":null}
+{"id":"msg-036","text":"Bug Multisystem: 15% discount on laptops. Code: LAPTOP15. Valid until 01/10/24","expected":{"title":"Bug Multisystem","code":"LAPTOP15","expiryDate":"2024-10-01","type":"coupon"}}
+{"id":"msg-037","text":"Lush gift card: £30. PIN: 4412","expected":{"title":"Lush","amount":30,"currency":"GBP","code":"4412","type":"gift_card"}}
+{"id":"msg-038","text":"Your password reset link is here. Valid for 10 minutes.","expected":null}
+{"id":"msg-039","text":"Terminal X gift voucher. 250 NIS. Redeem with code TX-250 at checkout.","expected":{"title":"Terminal X","amount":250,"currency":"ILS","code":"TX-250","type":"gift_card"}}
+{"id":"msg-040","text":"Gett taxi promo code: GETT-RIDE for 20 NIS off your first ride.","expected":{"title":"Gett","amount":20,"currency":"ILS","code":"GETT-RIDE","type":"coupon"}}
+{"id":"msg-041","text":"Happy anniversary! Love, Mom and Dad.","expected":null}
+{"id":"msg-042","text":"Apple Store Gift Card $50. Serial: XA9912-MMXA-12","expected":{"title":"Apple Store","amount":50,"currency":"USD","code":"XA9912-MMXA-12","type":"gift_card"}}
+{"id":"msg-043","text":"Golda ice cream free scoop. Code: GLD-FREE. Expiry 31-08-2024","expected":{"title":"Golda","code":"GLD-FREE","expiryDate":"2024-08-31","type":"coupon"}}
+{"id":"msg-044","text":"We need to talk about the project deadline.","expected":null}
+{"id":"msg-045","text":"Adidas 100 NIS store credit. Return receipt code 991827.","expected":{"title":"Adidas","amount":100,"currency":"ILS","code":"991827","type":"store_credit"}}
+{"id":"msg-046","text":"Mega Ba'ir coupon: 5 NIS off milk. Barcode 1129384","expected":{"title":"Mega Ba'ir","amount":5,"currency":"ILS","code":"1129384","type":"coupon"}}
+{"id":"msg-047","text":"Can you pick me up at 5?","expected":null}
+{"id":"msg-048","text":"Zomet Sfarim 150 ILS gift token. PIN: ZS-150-12","expected":{"title":"Zomet Sfarim","amount":150,"currency":"ILS","code":"ZS-150-12","type":"gift_card"}}
+{"id":"msg-049","text":"Dominos Pizza: Free cheesy crust upgrade with code CHEESE-UP.","expected":{"title":"Dominos Pizza","code":"CHEESE-UP","type":"coupon"}}
+{"id":"msg-050","text":"Your invoice #19283 is ready for download.","expected":null}
+{"id":"msg-051","text":"H&O gift card 300 NIS. ID: 11223344.","expected":{"title":"H&O","amount":300,"currency":"ILS","code":"11223344","type":"gift_card"}}
+{"id":"msg-052","text":"Delta 50 NIS off on pajamas. Code: SLEEP50","expected":{"title":"Delta","amount":50,"currency":"ILS","code":"SLEEP50","type":"coupon"}}
+{"id":"msg-053","text":"Let's meet at the park tomorrow.","expected":null}
+{"id":"msg-054","text":"Nespresso boutique 100 ILS capsule credit. Code: NESP-100.","expected":{"title":"Nespresso","amount":100,"currency":"ILS","code":"NESP-100","type":"store_credit"}}
+{"id":"msg-055","text":"Arcafe free coffee with pastry purchase. Show code ARC-COF.","expected":{"title":"Arcafe","code":"ARC-COF","type":"coupon"}}
+{"id":"msg-056","text":"Did you see the news today?","expected":null}
+{"id":"msg-057","text":"Opticana 200 NIS sunglasses voucher. Barcode: OPT-200.","expected":{"title":"Opticana","amount":200,"currency":"ILS","code":"OPT-200","type":"gift_card"}}
+{"id":"msg-058","text":"Steimatzky 1+1 on thrillers. Code: THRILL-11. Valid May 2024.","expected":{"title":"Steimatzky","code":"THRILL-11","type":"coupon","expiryDate":"2024-05-31"}}
+{"id":"msg-059","text":"I lost my keys, can you open the door?","expected":null}
+{"id":"msg-060","text":"Laline 50 NIS birthday gift string. LAL-BTH-50","expected":{"title":"Laline","amount":50,"currency":"ILS","code":"LAL-BTH-50","type":"gift_card"}}
