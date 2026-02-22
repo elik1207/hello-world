@@ -26,10 +26,16 @@ async function runEval() {
 
     let detMatches = 0;
     let detFalsePositives = 0;
+    let detMissingFieldsTotal = 0;
+    let detNeedsReviewTotal = 0;
 
     let llmMatches = 0;
     let llmFalsePositives = 0;
     let llmFallbacks = 0;
+    let llmMissingFieldsTotal = 0;
+    let llmNeedsReviewTotal = 0;
+    let llmTotalLatency = 0;
+    let llmCalls = 0;
 
     const totalVouchers = data.filter(d => d.expected !== null).length;
     const totalIrrelevant = data.length - totalVouchers;
@@ -48,16 +54,26 @@ async function runEval() {
                 detFalsePositives++;
             }
         } else {
-            // Check if determinisic caught the most critical constraints
-            if (detValid && detValid.title === sample.expected.title && detValid.code === sample.expected.code) {
-                detMatches++;
+            if (detValid) {
+                detMissingFieldsTotal += detValid.missingRequiredFields?.length || 0;
+                detNeedsReviewTotal += detValid.inferredFields?.length || 0; // Using inferred as proxy for "needs review"
+
+                if (detValid.title === sample.expected.title && detValid.code === sample.expected.code) {
+                    detMatches++;
+                }
             }
         }
 
         // 2. Run LLM (slow, sequential for accurate local evaluation)
         if (runLlm) {
             try {
+                const startTime = Date.now();
                 const llmRaw = await extractWithLlm(sample.text, 'whatsapp');
+                const elapsedMs = Date.now() - startTime;
+
+                llmCalls++;
+                llmTotalLatency += elapsedMs;
+
                 const llmValid = validateOutput(llmRaw);
 
                 if (sample.expected === null) {
@@ -65,8 +81,13 @@ async function runEval() {
                         llmFalsePositives++;
                     }
                 } else {
-                    if (llmValid && llmValid.title === sample.expected.title && llmValid.code === sample.expected.code) {
-                        llmMatches++;
+                    if (llmValid) {
+                        llmMissingFieldsTotal += llmValid.missingRequiredFields?.length || 0;
+                        llmNeedsReviewTotal += llmValid.inferredFields?.length || 0;
+
+                        if (llmValid.title === sample.expected.title && llmValid.code === sample.expected.code) {
+                            llmMatches++;
+                        }
                     }
                 }
             } catch (e) {
@@ -81,12 +102,17 @@ async function runEval() {
         irrelevant: totalIrrelevant,
         deterministic: {
             exactMatchRate: (detMatches / totalVouchers).toFixed(2),
-            falsePositiveCount: detFalsePositives
+            falsePositiveRate: (detFalsePositives / totalIrrelevant).toFixed(2),
+            avgMissingFieldCount: (detMissingFieldsTotal / totalVouchers).toFixed(2),
+            avgNeedsReviewFieldCount: (detNeedsReviewTotal / totalVouchers).toFixed(2),
         },
         llm: runLlm ? {
             exactMatchRate: (llmMatches / totalVouchers).toFixed(2),
-            falsePositiveCount: llmFalsePositives,
-            fallbackCount: llmFallbacks
+            falsePositiveRate: (llmFalsePositives / totalIrrelevant).toFixed(2),
+            avgMissingFieldCount: (llmMissingFieldsTotal / totalVouchers).toFixed(2),
+            avgNeedsReviewFieldCount: (llmNeedsReviewTotal / totalVouchers).toFixed(2),
+            fallbackRate: (llmFallbacks / data.length).toFixed(2),
+            avgLatencyMs: llmCalls > 0 ? Object.is(Math.round(llmTotalLatency / llmCalls), -0) ? 0 : Math.round(llmTotalLatency / llmCalls) : 0
         } : null
     };
 
@@ -101,13 +127,18 @@ async function runEval() {
 
 ## Deterministic Parser
 - **Core Entity Match Rate:** ${(metrics.deterministic.exactMatchRate as unknown as number) * 100}%
-- **False Positives:** ${metrics.deterministic.falsePositiveCount}
+- **False Positive Rate:** ${(metrics.deterministic.falsePositiveRate as unknown as number) * 100}%
+- **Avg Missing Fields:** ${metrics.deterministic.avgMissingFieldCount}
+- **Avg Needs Review Fields:** ${metrics.deterministic.avgNeedsReviewFieldCount}
 
 ## LLM Parser (GPT)
 ${runLlm ? `
 - **Core Entity Match Rate:** ${(metrics.llm!.exactMatchRate as unknown as number) * 100}%
-- **False Positives:** ${metrics.llm!.falsePositiveCount}
-- **Timeouts/Failures:** ${metrics.llm!.fallbackCount}
+- **False Positive Rate:** ${(metrics.llm!.falsePositiveRate as unknown as number) * 100}%
+- **Avg Missing Fields:** ${metrics.llm!.avgMissingFieldCount}
+- **Avg Needs Review Fields:** ${metrics.llm!.avgNeedsReviewFieldCount}
+- **Fallback Rate:** ${(metrics.llm!.fallbackRate as unknown as number) * 100}%
+- **Avg Latency:** ${metrics.llm!.avgLatencyMs}ms
 ` : '*LLM evaluation skipped (No API key present during `npm run eval`).*'}
 
 *Note: Core Match assumes exactly identifying Title and Code. Amount validation is fuzzier offline.*

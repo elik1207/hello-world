@@ -7,6 +7,7 @@ import rateLimit from 'express-rate-limit';
 import { extractGiftFromText } from '../lib/ai/extractGiftFromText';
 // Import optional LLM algorithm
 import { extractWithLlm, ExpectedResponseSchema } from './llm/extractWithLlm';
+import { shouldUseLlm } from './llm/routing';
 import type { SourceType, GiftOrVoucherDraft } from '../lib/types';
 import { PostHog } from 'posthog-node';
 import crypto from 'crypto';
@@ -33,8 +34,8 @@ app.use(cors());
 app.use(express.json());
 
 const apiLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // limit each IP to 100 requests per windowMs
+    windowMs: 15 * 60 * 1000,
+    max: 100,
     message: { error: 'Too many extraction requests, please try again later.' }
 });
 app.use('/ai/', apiLimiter);
@@ -43,8 +44,29 @@ app.use('/ai/', apiLimiter);
 let activeLlmRequests = 0;
 const MAX_CONCURRENT_LLM_REQUESTS = 5;
 
-// Simple in-memory cache for LLM routes to prevent repeat parsing of exact same strings (max 1000 items)
-const responseCache = new Map<string, GiftOrVoucherDraft>();
+// Memory Cache with 24h TTL + Rolling Error Window Guardrails
+const LLM_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const responseCache = new Map<string, { value: GiftOrVoucherDraft; expiresAt: number }>();
+
+let errorWindow: ('success' | 'fallback' | 'invalid_json')[] = [];
+const ERROR_WINDOW_SIZE = 100;
+const ERROR_TRIP_THRESHOLD = 0.50; // 50% failure rate auto-disables LLM
+let llmAutoDisabled = false;
+
+function recordLlmResult(status: 'success' | 'fallback' | 'invalid_json') {
+    errorWindow.push(status);
+    if (errorWindow.length > ERROR_WINDOW_SIZE) {
+        errorWindow.shift();
+    }
+
+    if (errorWindow.length >= 10 && !llmAutoDisabled) {
+        const fails = errorWindow.filter(s => s !== 'success').length;
+        if (fails / errorWindow.length >= ERROR_TRIP_THRESHOLD) {
+            llmAutoDisabled = true;
+            console.error("[CRITICAL] LLM Failure rate exceeded threshold. Auto-disabling LLM routing.");
+        }
+    }
+}
 
 // Schema for validating incoming extraction requests
 const extractRequestSchema = z.object({
@@ -52,24 +74,6 @@ const extractRequestSchema = z.object({
     sourceType: z.string().optional()
 });
 
-// Routing Heuristic: Decides if we actually need to pay for an LLM call or if the regex nailed it
-function shouldUseLlm(sourceText: string, deterministicResult: GiftOrVoucherDraft | null): boolean {
-    if (!deterministicResult) return true; // Regex yielded nothing at all
-
-    // Explicit exclusions - if it has "tracking" things, don't bother LLM
-    if (sourceText.toLowerCase().includes('password') || sourceText.toLowerCase().includes('verification code')) {
-        return false;
-    }
-
-    const missingAmount = !deterministicResult.amount;
-    const missingTitle = !deterministicResult.title;
-    const hasAmbiguousCode = (deterministicResult.code?.length || 0) < 4;
-
-    const missingConditionCount = (missingAmount ? 1 : 0) + (missingTitle ? 1 : 0) + (hasAmbiguousCode ? 1 : 0);
-
-    // Fall back to the heavy model if we are missing critical fields
-    return missingConditionCount >= 1;
-}
 
 app.post('/ai/extract', async (req, res) => {
     const requestId = req.header('X-Request-ID') || Math.random().toString(36).substring(7);
@@ -144,61 +148,74 @@ app.post('/ai/extract', async (req, res) => {
             const cacheKey = crypto.createHash('sha256').update(sourceText + '|' + safeSourceType).digest('hex');
 
             if (responseCache.has(cacheKey)) {
-                draft = responseCache.get(cacheKey)!;
-                trackBackendEvent('llm_cache_hit', { success: true });
-            } else if (activeLlmRequests >= MAX_CONCURRENT_LLM_REQUESTS) {
-                console.warn(`[REQ ${requestId}] Concurrency limit hit. Falling back to deterministic directly.`);
-                trackBackendEvent('extract_fallback', { reason: 'concurrency_limit' });
-            } else {
-                activeLlmRequests++;
-                try {
-                    // Attempt OpenAI extraction strictly
-                    const llmResult = await extractWithLlm(sourceText, sourceType as SourceType);
-
-                    if (llmResult === null) {
-                        // Model explicitly said this is irrelevant text. 
-                        draft = null;
-                    } else {
-                        draft = llmResult;
-                        // Cache successful expensive result
-                        if (responseCache.size >= 1000) {
-                            const firstKey = responseCache.keys().next().value;
-                            responseCache.delete(firstKey);
-                        }
-                        responseCache.set(cacheKey, llmResult);
-                    }
-
-                    trackBackendEvent('llm_used', { success: true });
-                } catch (llmError: any) {
-                    console.warn(`[REQ ${requestId}] LLM failed (${llmError.message}). Falling back to deterministic regex.`);
-
-                    trackBackendEvent('extract_fallback', {
-                        reason: llmError.message?.toLowerCase().includes('timeout') ? 'timeout' : 'provider_error'
-                    });
-
-                    // Fallback deterministic execution ensuring we return *something* if regex had a clue
-                    draft = detDraft;
-                    if (draft) {
-                        draft.assumptions = draft.assumptions || [];
-                        draft.assumptions.push("LLM output invalid or timed out; fell back to deterministic parsing.");
-                    }
-                } finally {
-                    activeLlmRequests--;
+                const cached = responseCache.get(cacheKey)!;
+                if (cached.expiresAt > Date.now()) {
+                    draft = cached.value;
+                    trackBackendEvent('llm_cache_hit', { success: true });
+                } else {
+                    responseCache.delete(cacheKey); // Evict stale cache entry
                 }
             }
-        }
+
+            // Execute if cache loop hasn't securely extracted the map:
+            if (draft === detDraft) {
+                if (llmAutoDisabled) {
+                    trackBackendEvent('extract_fallback', { reason: 'auto_disabled' });
+                } else if (activeLlmRequests >= MAX_CONCURRENT_LLM_REQUESTS) {
+                    console.warn(`[REQ ${requestId}] Concurrency limit hit. Falling back to deterministic directly.`);
+                    trackBackendEvent('extract_fallback', { reason: 'concurrency_limit' });
+                } else {
+                    activeLlmRequests++;
+                    try {
+                        // Attempt OpenAI extraction strictly
+                        const llmResult = await extractWithLlm(sourceText, sourceType as SourceType);
+
+                        if (llmResult === null) {
+                            // Model explicitly said this is irrelevant text. 
+                            draft = null;
+                        } else {
+                            draft = llmResult;
+                            // Cache successful expensive result
+                            if (responseCache.size >= 1000) {
+                                const firstKey = responseCache.keys().next().value;
+                                responseCache.delete(firstKey);
+                            }
+                            responseCache.set(cacheKey, { value: llmResult, expiresAt: Date.now() + LLM_CACHE_TTL_MS });
+                        }
+
+                        trackBackendEvent('llm_used', { success: true });
+                    } catch (llmError: any) {
+                        console.warn(`[REQ ${requestId}] LLM failed (${llmError.message}). Falling back to deterministic regex.`);
+
+                        trackBackendEvent('extract_fallback', {
+                            reason: llmError.message?.toLowerCase().includes('timeout') ? 'timeout' : 'provider_error'
+                        });
+
+                        // Fallback deterministic execution ensuring we return *something* if regex had a clue
+                        draft = detDraft;
+                        if (draft) {
+                            draft.assumptions = draft.assumptions || [];
+                            draft.assumptions.push("LLM output invalid or timed out; fell back to deterministic parsing.");
+                        }
+                    } finally {
+                        activeLlmRequests--;
+                    }
+                }
+            }
+        } // Missed brace
 
         // If the decision (via LLM returning strict null) is that this is irrelevant spam/chat:
         if (draft === null) {
             return res.json(null); // Explicit non-voucher
         }
 
-        // 3. Strict Unified Validation (Applies to deterministic parser as well)
+        // 3. Strict Unified Validation
         let validatedDraft;
         try {
             validatedDraft = ExpectedResponseSchema.parse(draft);
         } catch (validationError) {
             console.error(`[REQ ${requestId}] Output Validation Error:`, validationError);
+            recordLlmResult('invalid_json');
             trackBackendEvent('extract_fail', { reason: 'invalid_json' });
             return res.status(500).json({ error: 'Internal server error: Output validation failed. The parser returned an invalid schema.' });
         }
