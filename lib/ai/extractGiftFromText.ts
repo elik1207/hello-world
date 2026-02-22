@@ -84,21 +84,36 @@ export function extractGiftFromText(text: string, sourceType: SourceType = 'othe
     }
 
     // 3. Detect Code
-    // HEURISTIC: Look for strong contextual keywords like "Code:", "קוד:", "קופון:" followed immediately by alphanumeric strings
-    // TODO: This fails if there are words between the indicator and the code (e.g. "קוד שלך למימוש: X"). Also vulnerability to extracting the word "code" if previous word was "voucher".
-    const codeIndicatorRegex = /(?:code|קוד|קופון|מספר שובר|שובר|voucher)[\s:]*([A-Z0-9-]{4,20})/i;
+    // First Priority: Strong contextual keywords like "Code:", "קוד:", "קופון:"
+    const codeIndicatorRegex = /(?:code|קוד|קופון|מספר שובר|שובר|voucher)[\s:]*([A-Za-z0-9-]{4,25})/i;
     const codeMatch = text.match(codeIndicatorRegex);
+    let foundCode = false;
+
     if (codeMatch && codeMatch[1]) {
-        draft.code = codeMatch[1].trim();
-        confidencePoints++;
-    } else {
-        // ASSUMPTION: Fallback: look for isolated all-caps alphanumeric strings (e.g., A7B-99-XZ) which represent codes 90% of the time
-        // TODO: isolatedCodeRegex is too strict on dash subsets (e.g., requires 4 chars on BOTH sides of the dash, failing ABCD-123). Needs refactoring to `[A-Z0-9-]{5,}` with digit/alpha filters.
-        const isolatedCodeRegex = /\b([A-Z0-9]{4,}(?:-[A-Z0-9]{4,})*)\b/g;
+        const potentialCode = codeMatch[1].trim();
+        // Validate: must contain numbers (to avoid catching words like "BuyMe")
+        if (/\d/.test(potentialCode) && potentialCode.length >= 4) {
+            draft.code = potentialCode;
+            confidencePoints++;
+            foundCode = true;
+        }
+    }
+
+    // Second Priority: Fallback look for isolated strings that look like codes
+    if (!foundCode) {
+        // Must be at least 6 characters long in total, containing alphanumeric characters and optional dashes
+        // e.g., 9376-1193-5341-4911, A7B-99-XZ, XZ-1234-9A
+        // Focus purely on internal structure instead of external boundaries to handle Hebrew/RTL wrapping
+        const isolatedCodeRegex = /[A-Z0-9]{2,}(?:-[A-Z0-9]{2,}){1,}/g;
         const isolatedMatches = text.match(isolatedCodeRegex);
-        if (isolatedMatches) {
-            // Filter out things that look like dates or amounts or standard words
-            const validCodes = isolatedMatches.filter(m => !/^\d+$/.test(m) && m.length > 4);
+        if (isolatedMatches && isolatedMatches.length > 0) {
+            // Filter out things that look like dates (e.g. 20-05-2025), phone numbers (all digits+dashes)
+            // Only flag as phone if it's purely digits/dashes AND shorter than 15 chars (BuyMe codes are 19 chars)
+            const validCodes = isolatedMatches.filter(m => {
+                const isDate = /\b\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}\b/.test(m);
+                const isPhoneOrPureMath = /^[\d-]+$/.test(m) && m.length < 15;
+                return m.length >= 6 && !isDate && !isPhoneOrPureMath;
+            });
             if (validCodes.length > 0) {
                 draft.code = validCodes[0];
                 draft.assumptions!.push(`Found isolated string '${validCodes[0]}', assuming it's the code.`);

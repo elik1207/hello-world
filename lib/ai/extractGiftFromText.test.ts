@@ -174,4 +174,20 @@ describe('extractGiftFromText (Deterministic Heuristics)', () => {
         expect(result.expirationDate).toBeUndefined();
         expect(result.missingRequiredFields).toContain('title');
     });
+
+    test('21. BuyMe heavily dashed code without strict text indicator', () => {
+        const text = `אלי קלר,
+קיבלת גיפט קארד בשווי 150 ש"ח
+בBUYME ALL - מגוון אדיר במתנה אחת במתנה מדיסקונט CTO
+למימוש יש להציג לבית העסק את קוד שובר BuyMe
+9376-1193-5341-4911
+בתוקף עד 03/12/2030
+לצפייה בגיפט קארד המעוצב ותנאיו
+https://buyme.co.il/G3ec8qbsfhddih`;
+        const result = extractGiftFromText(text, 'whatsapp');
+        expect(result.merchant).toBe('BuyMe');
+        expect(result.amount).toBe(150);
+        expect(result.code).toBe('9376-1193-5341-4911');
+        expect(result.expirationDate).toBeDefined();
+    });
 });
