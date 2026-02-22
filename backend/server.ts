@@ -8,8 +8,20 @@ import { extractGiftFromText } from '../lib/ai/extractGiftFromText';
 // Import optional LLM algorithm
 import { extractWithLlm, ExpectedResponseSchema } from './llm/extractWithLlm';
 import type { SourceType } from '../lib/types';
+import { PostHog } from 'posthog-node';
 
 dotenv.config();
+
+const analyticsProvider = process.env.ANALYTICS_PROVIDER || 'console';
+const analyticsEnabled = process.env.ANALYTICS_ENABLED !== 'false';
+const sampleRate = parseFloat(process.env.ANALYTICS_SAMPLE_RATE || '1.0');
+
+let posthog: PostHog | null = null;
+if (analyticsEnabled && analyticsProvider === 'posthog') {
+    posthog = new PostHog(process.env.POSTHOG_API_KEY || 'phc_dummy', {
+        host: process.env.POSTHOG_HOST || 'https://us.i.posthog.com',
+    });
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -38,13 +50,25 @@ app.post('/ai/extract', async (req, res) => {
 
     // Backend Analytics Logging Helper
     const trackBackendEvent = (eventName: string, payload: Record<string, any> = {}) => {
-        // TODO: Integrate PostHog / Segment Node.js SDK here
-        console.log(`[ANALYTICS] ${eventName}`, JSON.stringify({
+        if (!analyticsEnabled || Math.random() > sampleRate) return;
+
+        const safePayload = {
             requestId,
             sessionId,
-            timestamp: new Date().toISOString(),
+            appVersion: process.env.npm_package_version || '2.0.0',
+            platform: 'backend',
             ...payload
-        }));
+        };
+
+        if (posthog) {
+            posthog.capture({
+                distinctId: sessionId || 'backend_sys',
+                event: eventName,
+                properties: safePayload
+            });
+        } else {
+            console.log(`[ANALYTICS] ${eventName}`, JSON.stringify({ timestamp: new Date().toISOString(), ...safePayload }));
+        }
     };
 
     trackBackendEvent('extract_request', {

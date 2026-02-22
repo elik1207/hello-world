@@ -1,10 +1,15 @@
+import { initAnalytics, logEvent } from './analyticsProvider';
+
 /**
  * Core Analytics Abstraction
- * Currently logs to console, but designed to be swapped out for PostHog/Segment/Amplitude later.
+ * Calls the provider adapter dynamically.
  */
 
 // Generate a roughly unique session ID for this app launch
 export const sessionId = `sess_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+// Initialize the selected analytics provider on boot
+initAnalytics();
 
 export type AnalyticsEvent =
     | 'paste_message'
@@ -29,14 +34,5 @@ export interface EventPayload {
  * Enforces structured schemas and session correlation.
  */
 export function trackEvent(eventName: AnalyticsEvent, payload?: EventPayload) {
-    const finalPayload = {
-        eventName,
-        sessionId,
-        timestamp: new Date().toISOString(),
-        ...payload
-    };
-
-    // Replace this internal 'provider' with PostHog or Amplitude SDK later
-    // TODO: Integrate PostHog / Segment / Amplitude for Frontend logging here
-    console.log(`[ANALYTICS] ${eventName}`, JSON.stringify(finalPayload));
+    logEvent(eventName, payload || {}, sessionId);
 }
