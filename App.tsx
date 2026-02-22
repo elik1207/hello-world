@@ -10,6 +10,7 @@ import { WalletPage } from './pages/WalletPage';
 import { AddEditPage } from './pages/AddEditPage';
 import { AddViaAIPage } from './pages/AddViaAIPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 import './global-css';
 
@@ -42,14 +43,22 @@ export default function App() {
                 curr.map((c) => (c.id === editingCoupon.id ? { ...c, ...data, updatedAt: now } : c))
             );
         } else {
-            const newCoupon: Coupon = {
-                id: generateId(),
-                ...data,
-                status: 'active',
-                createdAt: now,
-                updatedAt: now,
-            };
-            setCoupons((curr) => [newCoupon, ...curr]);
+            // Phase 4: True Idempotency Enforcement
+            setCoupons((curr) => {
+                if (data.idempotencyKey && curr.some(c => c.idempotencyKey === data.idempotencyKey)) {
+                    console.log('[App] Idempotent save blocked duplicate:', data.idempotencyKey);
+                    return curr;
+                }
+
+                const newCoupon: Coupon = {
+                    id: generateId(),
+                    ...data,
+                    status: 'active',
+                    createdAt: now,
+                    updatedAt: now,
+                };
+                return [newCoupon, ...curr];
+            });
         }
         setView('wallet');
         setEditingCoupon(undefined);
@@ -110,10 +119,12 @@ export default function App() {
                 />
             )}
             {view === 'add-ai' && (
-                <AddViaAIPage
-                    onSave={handleSave}
-                    onCancel={() => setView('wallet')}
-                />
+                <ErrorBoundary onReset={() => setView('wallet')}>
+                    <AddViaAIPage
+                        onSave={handleSave}
+                        onCancel={() => setView('wallet')}
+                    />
+                </ErrorBoundary>
             )}
             {view === 'settings' && (
                 <SettingsPage

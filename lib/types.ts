@@ -21,6 +21,7 @@ export interface Coupon {
     event?: string;       // Added optional event (e.g., birthday)
     imageUrl?: string;    // Added optional image URL
     barcodeData?: string; // Added optional barcode/QR data
+    idempotencyKey?: string; // Phase 4 hardening: prevent duplicate saves
     createdAt: number;
     updatedAt: number;
 }
