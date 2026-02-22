@@ -1,17 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import { View, Alert } from 'react-native';
-import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system';
 import { StatusBar } from 'expo-status-bar';
 import type { Coupon } from './lib/types';
-import { getCoupons, saveCoupons, clearCoupons, importCoupons } from './lib/storage';
+import { getCoupons, saveCoupons, clearCoupons, importCoupons, generateId } from './lib/storage';
+import { exportWallet, importWalletFile } from './lib/importExport';
 import { BottomNav } from './components/BottomNav';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { WalletPage } from './pages/WalletPage';
 import { AddEditPage } from './pages/AddEditPage';
 import { SettingsPage } from './pages/SettingsPage';
 
-import './global.css';
+import './global-css';
 
 type AppView = 'wallet' | 'add' | 'settings';
 
@@ -43,7 +42,7 @@ export default function App() {
             );
         } else {
             const newCoupon: Coupon = {
-                id: Math.random().toString(36).slice(2),
+                id: generateId(),
                 ...data,
                 status: 'active',
                 createdAt: now,
@@ -66,25 +65,21 @@ export default function App() {
     };
 
     const handleExport = useCallback(async () => {
-        try {
-            const json = JSON.stringify(coupons, null, 2);
-            const filename = `coupon-wallet-${new Date().toISOString().split('T')[0]}.json`;
-            const fileUri = (FileSystem.cacheDirectory ?? '') + filename;
-            await FileSystem.writeAsStringAsync(fileUri, json);
-            await Sharing.shareAsync(fileUri, { mimeType: 'application/json' });
-        } catch {
-            Alert.alert('Export Failed', 'Could not export coupons.');
-        }
-    }, [coupons]);
+        const success = await exportWallet();
+        if (!success) Alert.alert('Export Failed', 'Could not export coupons.');
+    }, []);
 
-    const handleImport = async (content: string) => {
-        const ok = await importCoupons(content);
-        if (ok) {
-            const updated = await getCoupons();
-            setCoupons(updated);
-            Alert.alert('✅ Imported', 'Coupons imported successfully!');
-        } else {
-            Alert.alert('Import Failed', 'Invalid JSON format.');
+    const handleImport = async () => {
+        const content = await importWalletFile();
+        if (content) {
+            const ok = await importCoupons(content);
+            if (ok) {
+                const updated = await getCoupons();
+                setCoupons(updated);
+                Alert.alert('✅ Imported', 'Coupons imported successfully!');
+            } else {
+                Alert.alert('Import Failed', 'Invalid JSON format.');
+            }
         }
     };
 

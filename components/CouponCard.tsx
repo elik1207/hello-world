@@ -3,9 +3,9 @@ import Animated, {
     useAnimatedStyle,
     withSpring,
 } from 'react-native-reanimated';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text, Pressable, Image } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { Edit2, Trash2, CheckCircle, Clock, AlertCircle, Tag } from 'lucide-react-native';
+import { Edit2, Trash2, CheckCircle, Clock, AlertCircle, Tag, Gift, Ticket } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { Coupon } from '../lib/types';
 import { formatCurrency, formatDate, getDaysUntilExpiry } from '../lib/utils';
@@ -49,7 +49,11 @@ function ActionBtn({
 export function CouponCard({ coupon, onEdit, onDelete, onToggleStatus }: CouponCardProps) {
     const daysLeft = getDaysUntilExpiry(coupon.expiryDate);
     const isExpired = daysLeft !== null && daysLeft < 0;
-    const isUsed = coupon.status === 'used';
+
+    const isGiftCard = coupon.type === 'gift_card';
+    const hasRemaining = isGiftCard && coupon.remainingValue !== undefined && coupon.initialValue !== undefined;
+    const isFullyUsed = hasRemaining && coupon.remainingValue! <= 0;
+    const isUsed = coupon.status === 'used' || isFullyUsed;
 
     // Status-based accent color
     let accentColor = '#6366f1'; // default indigo
@@ -85,6 +89,7 @@ export function CouponCard({ coupon, onEdit, onDelete, onToggleStatus }: CouponC
     }
 
     const dimmed = isUsed || isExpired;
+    const TypeIcon = coupon.type === 'gift_card' ? Gift : coupon.type === 'voucher' ? Ticket : Tag;
 
     return (
         <Animated.View
@@ -96,7 +101,6 @@ export function CouponCard({ coupon, onEdit, onDelete, onToggleStatus }: CouponC
                 backgroundColor: '#27305a',
                 borderWidth: 1,
                 borderColor: '#3c4270',
-                // shadow
                 shadowColor: accentColor,
                 shadowOffset: { width: 0, height: 2 },
                 shadowOpacity: 0.15,
@@ -104,142 +108,97 @@ export function CouponCard({ coupon, onEdit, onDelete, onToggleStatus }: CouponC
                 elevation: 4,
             }}
         >
-            {/* Colored left accent bar */}
-            <View
-                style={{
-                    position: 'absolute',
-                    left: 0,
-                    top: 0,
-                    bottom: 0,
-                    width: 4,
-                    backgroundColor: accentColor,
-                    borderTopLeftRadius: 16,
-                    borderBottomLeftRadius: 16,
-                }}
-            />
+            <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, backgroundColor: accentColor, borderTopLeftRadius: 16, borderBottomLeftRadius: 16 }} />
 
             <View style={{ padding: 16, paddingLeft: 20 }}>
-                {/* Top row */}
+                {!!coupon.imageUrl && (
+                    <View style={{ width: '100%', height: 120, marginBottom: 16, backgroundColor: '#1a1d38', borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#3c4270' }}>
+                        <Image source={{ uri: coupon.imageUrl }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                    </View>
+                )}
+
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <View style={{ flex: 1, marginRight: 12 }}>
-                        <Text
-                            style={{
-                                fontSize: 16,
-                                fontWeight: '700',
-                                color: isUsed ? '#64748b' : '#f8fafc',
-                                textDecorationLine: isUsed ? 'line-through' : 'none',
-                                marginBottom: 4,
-                            }}
-                            numberOfLines={1}
-                        >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                            <TypeIcon size={12} color="#a0aed4" />
+                            <Text style={{ fontSize: 10, fontWeight: '700', color: '#a0aed4', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                                {coupon.type.replace('_', ' ')}
+                            </Text>
+                        </View>
+                        <Text style={{ fontSize: 16, fontWeight: '700', color: isUsed ? '#64748b' : '#f8fafc', textDecorationLine: isUsed ? 'line-through' : 'none', marginBottom: 6 }} numberOfLines={1}>
                             {coupon.title}
                         </Text>
                         <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
                             {!!coupon.store && (
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-                                    <Tag size={11} color="#6366f1" />
-                                    <Text style={{ fontSize: 12, color: '#dde2f4', fontWeight: '500' }}>
-                                        {coupon.store}
-                                    </Text>
-                                </View>
+                                <Text style={{ fontSize: 12, color: '#dde2f4', fontWeight: '500' }}>{coupon.store}</Text>
                             )}
                             {!!coupon.category && (
-                                <View
-                                    style={{
-                                        backgroundColor: '#252050',
-                                        paddingHorizontal: 8,
-                                        paddingVertical: 2,
-                                        borderRadius: 20,
-                                        borderWidth: 1,
-                                        borderColor: '#3c4270',
-                                    }}
-                                >
-                                    <Text style={{ fontSize: 11, color: '#a78bfa', fontWeight: '500' }}>
-                                        {coupon.category}
-                                    </Text>
+                                <View style={{ backgroundColor: '#252050', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 20, borderWidth: 1, borderColor: '#3c4270' }}>
+                                    <Text style={{ fontSize: 11, color: '#a78bfa', fontWeight: '500' }}>{coupon.category}</Text>
                                 </View>
                             )}
                         </View>
                     </View>
 
-                    {/* Discount Value */}
-                    <LinearGradient
-                        colors={dimmed ? ['#3c4270', '#3c4270'] : ['#6366f1', '#8b5cf6']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                        style={{ borderRadius: 12, paddingHorizontal: 12, paddingVertical: 6, alignItems: 'center' }}
-                    >
-                        <Text style={{ fontSize: 18, fontWeight: '800', color: dimmed ? '#a0aed4' : '#ffffff' }}>
-                            {coupon.discountType === 'percent'
-                                ? `${coupon.discountValue}%`
-                                : formatCurrency(coupon.discountValue, coupon.currency)}
-                        </Text>
-                    </LinearGradient>
-                </View>
-
-                {/* Bottom row */}
-                <View
-                    style={{
-                        flexDirection: 'row',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        marginTop: 14,
-                        paddingTop: 12,
-                        borderTopWidth: 1,
-                        borderTopColor: '#3c4270',
-                    }}
-                >
-                    <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                        <Text style={{ fontSize: 12, color: '#a0aed4' }}>
-                            {coupon.expiryDate ? `Exp: ${formatDate(coupon.expiryDate)}` : 'No expiry'}
-                        </Text>
-                        {!!badgeText && (
-                            <View
-                                style={{
-                                    backgroundColor: badgeBg,
-                                    paddingHorizontal: 8,
-                                    paddingVertical: 2,
-                                    borderRadius: 20,
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    gap: 3,
-                                }}
-                            >
-                                {isExpired && <AlertCircle size={10} color={badgeTextColor} />}
-                                {!isExpired && !isUsed && daysLeft !== null && daysLeft <= 7 && (
-                                    <Clock size={10} color={badgeTextColor} />
+                    <View style={{ alignItems: 'flex-end', justifyContent: 'center' }}>
+                        {isGiftCard ? (
+                            <View style={{ alignItems: 'flex-end' }}>
+                                <Text style={{ fontSize: 20, fontWeight: '800', color: dimmed ? '#a0aed4' : '#6366f1' }}>
+                                    {formatCurrency(coupon.remainingValue ?? coupon.initialValue ?? 0, coupon.currency)}
+                                </Text>
+                                {hasRemaining && coupon.remainingValue !== coupon.initialValue && (
+                                    <Text style={{ fontSize: 11, color: '#64748b', textDecorationLine: 'line-through', marginTop: 2 }}>
+                                        {formatCurrency(coupon.initialValue!, coupon.currency)}
+                                    </Text>
                                 )}
+                            </View>
+                        ) : (
+                            <LinearGradient colors={dimmed ? ['#3c4270', '#3c4270'] : ['#6366f1', '#8b5cf6']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ borderRadius: 12, paddingHorizontal: 12, paddingVertical: 6, alignItems: 'center' }}>
+                                <Text style={{ fontSize: 18, fontWeight: '800', color: dimmed ? '#a0aed4' : '#ffffff' }}>
+                                    {coupon.discountType === 'percent' ? `${coupon.discountValue}%` : formatCurrency(coupon.discountValue || 0, coupon.currency)}
+                                </Text>
+                            </LinearGradient>
+                        )}
+                        {!!badgeText && (
+                            <View style={{ backgroundColor: badgeBg, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 8 }}>
+                                {isExpired && <AlertCircle size={10} color={badgeTextColor} />}
+                                {!isExpired && !isUsed && daysLeft !== null && daysLeft <= 7 && <Clock size={10} color={badgeTextColor} />}
                                 <Text style={{ fontSize: 11, color: badgeTextColor, fontWeight: '600' }}>{badgeText}</Text>
                             </View>
                         )}
                     </View>
+                </View>
 
+                {(!!coupon.sender || !!coupon.event) && (
+                    <View style={{ marginTop: 12, padding: 8, backgroundColor: '#1a1d38', borderRadius: 8, borderWidth: 1, borderColor: '#3c4270', flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                        {!!coupon.sender && <Text style={{ fontSize: 11, color: '#a0aed4' }}>From: <Text style={{ color: '#dde2f4', fontWeight: '500' }}>{coupon.sender}</Text></Text>}
+                        {!!coupon.sender && !!coupon.event && <Text style={{ color: '#64748b', fontSize: 11 }}>•</Text>}
+                        {!!coupon.event && <Text style={{ fontSize: 11, color: '#a0aed4' }}>For: <Text style={{ color: '#dde2f4', fontWeight: '500' }}>{coupon.event}</Text></Text>}
+                    </View>
+                )}
+
+                {!!coupon.barcodeData && (
+                    <View style={{ marginTop: 12, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: '#1a1d38', borderRadius: 8, borderWidth: 1, borderColor: '#3c4270', alignItems: 'center' }}>
+                        <View style={{ flexDirection: 'row', width: '100%', height: 24, justifyContent: 'space-between', marginBottom: 4, opacity: 0.5 }}>
+                            {Array.from({ length: 24 }).map((_, i) => (
+                                <View key={i} style={{ flex: 1, backgroundColor: '#a0aed4', opacity: Math.random() > 0.5 ? 1 : 0.3, width: Math.random() * 4 + 1, marginHorizontal: 1 }} />
+                            ))}
+                        </View>
+                        <Text style={{ fontFamily: 'monospace', fontSize: 11, letterSpacing: 2, color: '#a0aed4', fontWeight: '600' }}>{coupon.barcodeData}</Text>
+                    </View>
+                )}
+
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#3c4270' }}>
+                    <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                        <Text style={{ fontSize: 12, color: '#a0aed4' }}>
+                            {coupon.expiryDate ? `Exp: ${formatDate(coupon.expiryDate)}` : 'No expiry'}
+                        </Text>
+                    </View>
                     <View style={{ flexDirection: 'row', gap: 4 }}>
-                        {!isUsed && !isExpired && (
-                            <ActionBtn
-                                onPress={() => onToggleStatus(coupon)}
-                                icon={<CheckCircle size={16} color="#10b981" />}
-                                color="#10b981"
-                            />
-                        )}
-                        {isUsed && (
-                            <ActionBtn
-                                onPress={() => onToggleStatus(coupon)}
-                                icon={<CheckCircle size={16} color="#6366f1" />}
-                                color="#6366f1"
-                            />
-                        )}
-                        <ActionBtn
-                            onPress={() => onEdit(coupon)}
-                            icon={<Edit2 size={16} color="#dde2f4" />}
-                            color="#dde2f4"
-                        />
-                        <ActionBtn
-                            onPress={() => onDelete(coupon)}
-                            icon={<Trash2 size={16} color="#ef4444" />}
-                            color="#ef4444"
-                            haptic="Medium"
-                        />
+                        {!isUsed && !isExpired && <ActionBtn onPress={() => onToggleStatus(coupon)} icon={<CheckCircle size={16} color="#10b981" />} color="#10b981" />}
+                        {isUsed && <ActionBtn onPress={() => onToggleStatus(coupon)} icon={<CheckCircle size={16} color="#6366f1" />} color="#6366f1" />}
+                        <ActionBtn onPress={() => onEdit(coupon)} icon={<Edit2 size={16} color="#dde2f4" />} color="#dde2f4" />
+                        <ActionBtn onPress={() => onDelete(coupon)} icon={<Trash2 size={16} color="#ef4444" />} color="#ef4444" haptic="Medium" />
                     </View>
                 </View>
             </View>

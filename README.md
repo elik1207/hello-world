@@ -55,7 +55,6 @@ Then:
 ## Project Structure
 
 ```
-app/          # Expo Router entry points
 components/   # Reusable UI components
   BottomNav.tsx
   CouponCard.tsx
@@ -69,6 +68,7 @@ lib/          # Shared logic (types, utils, storage)
   types.ts
   utils.ts
   storage.ts
+  importExport.ts # Exports dynamically resolve to platform-specific code
 App.tsx       # Root component with state management
 ```
 
@@ -80,3 +80,53 @@ App.tsx       # Root component with state management
 |---|---|
 | `v2.0.0` | Phase 2 "WOW" Release (Dark Theme, Urgency Inbox, Insights, Gift Cards) |
 | `v1.0-web` | Original React + Vite web-only version |
+
+---
+
+## Final Hardening Changelog (`v2.0.1+`)
+
+- **Strict Dependency Alignment**: React and React-DOM successfully downgraded and locked to version `18.2.0` to comply strictly with React Native `0.76.x` peer validation logic, completely eliminating the need for `--legacy-peer-deps`.
+- **Repo Hygiene & Expo Strictness**: Leftover DOM-based web (`src/`) directories were deleted, explicit `.gitignore` exclusions were established for `node_modules/` and `.DS_Store`, and `app.json` was safely encapsulated into the standard `{"expo": ...}` canonical object container. 
+- **Expo-Router Purged**: To cleanly maintain a single `App.tsx` state-managed runtime without hybrid overlap, Expo Router instances were eradicated everywhere (from `app.json` plugins down to the deletion of the `app/` file-based routing architecture).
+- **Type-Safe File Subsystems**: Split import/export functionalities forcefully into abstract `global-css.web.ts` and `importExportImpl.native.ts` extensions, securing zero compilation overlap between cross-platform web DOM APIs and Android/iOS Native execution!
+
+### Definition of Done
+- [x] `npm install` absolutely succeeds out-of-the-box perfectly without requiring `--legacy-peer-deps`.
+- [x] `npx expo doctor` signals an entirely green build.
+- [x] `npx expo start -c` and `npm run web` bundle correctly against the single codebase. 
+- [x] `npm run typecheck` issues zero warnings across the new TS/Expo layout.
+- [x] Built-in tracking of `npm audit --omit=dev` verifies the application code holds zero dev-exclusive vulnerabilities. Any remaining warnings point directly to transitive Metro/Jest configuration tooling managed externally by Expo.
+
+---
+
+## Setup & Verification ✅
+
+To confirm the repository is strictly aligned and deterministic, run the following sequence:
+
+```bash
+# 1. Clean deterministic install (No legacy-peer-deps needed)
+rm -rf node_modules package-lock.json
+npm install
+
+# 2. Verify Expo ecosystem alignment
+npx expo doctor
+# Optional fix: npx expo doctor --fix-dependencies
+
+# 3. Verify TypeScript integrity
+npm run typecheck
+
+# 4. Start the Web or Native target
+npx expo start -c
+npm run web
+```
+
+## Security & npm audit policy 🛡️
+
+- **We run `npm audit --omit=dev`** to assess production risk.
+- **We do NOT use `npm audit fix --force`** because forcefully updating transitive dependencies breaks Expo and React Native compatibility.
+- If the audit flags transitive tooling dependencies (e.g., `minimatch` or `glob` via Expo/Metro), we document them and address them exclusively via official Expo SDK upgrades, rather than forceful overrides.
+
+**Example CI Command:**
+```bash
+npm audit --omit=dev --audit-level=high
+```

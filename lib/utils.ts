@@ -1,37 +1,51 @@
-export function isExpired(expiryDate: string): boolean {
-    if (!expiryDate) return false;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return new Date(expiryDate) < today;
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+export function cn(...inputs: ClassValue[]) {
+    return twMerge(clsx(inputs));
 }
 
-export function getDaysUntilExpiry(expiryDate: string): number | null {
-    if (!expiryDate) return null;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const expiry = new Date(expiryDate);
-    const diff = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    return diff;
+export function formatCurrency(amount: number, currency: string = 'ILS'): string {
+    return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: currency,
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+    }).format(amount);
+}
+
+export function parseLocalDate(dateStr: string): Date | null {
+    if (!dateStr) return null;
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return null;
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1; // Months are 0-indexed
+    const day = parseInt(parts[2], 10);
+    return new Date(year, month, day);
 }
 
 export function formatDate(dateStr: string): string {
-    if (!dateStr) return '';
-    const [year, month, day] = dateStr.split('-');
-    return `${day}/${month}/${year}`;
+    const date = parseLocalDate(dateStr);
+    if (!date) return '';
+    return date.toLocaleDateString();
 }
 
-export function formatCurrency(value: number, currency: string): string {
-    const symbols: Record<string, string> = {
-        ILS: '₪',
-        USD: '$',
-        EUR: '€',
-        GBP: '£',
-    };
-    const symbol = symbols[currency] || currency;
-    return `${symbol}${value}`;
+export function getDaysUntilExpiry(expiryDateStr?: string): number | null {
+    if (!expiryDateStr) return null;
+    const expiry = parseLocalDate(expiryDateStr);
+    if (!expiry) return null;
+
+    const now = new Date();
+    // Reset time part to compare dates only
+    expiry.setHours(23, 59, 59, 999);
+    now.setHours(0, 0, 0, 0);
+
+    const diffTime = expiry.getTime() - now.getTime();
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 }
 
-/** Simple class join utility (replaces clsx/twMerge) */
-export function cn(...classes: (string | undefined | false | null)[]): string {
-    return classes.filter(Boolean).join(' ');
+export function isExpired(expiryDateStr?: string): boolean {
+    if (!expiryDateStr) return false;
+    const days = getDaysUntilExpiry(expiryDateStr);
+    return days !== null && days < 0;
 }

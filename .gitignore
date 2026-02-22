@@ -28,3 +28,15 @@ dist-ssr
 
 expo-env.d.ts
 # @end expo-cli
+.DS_Store
+__MACOSX
+
+# Expo / RN Environment Secrets & Caches
+.env
+.expo/
+.expo-shared/
+coverage/
+*-app.apk
+*.jks
+*.p12
+*.mobileprovision

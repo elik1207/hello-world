@@ -1,32 +1,15 @@
-import { View, Text, Pressable, ScrollView, Alert, SafeAreaView } from 'react-native';
-import * as Sharing from 'expo-sharing';
-import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import { View, Text, Pressable, ScrollView, SafeAreaView } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Download, Upload, Trash2, ChevronRight, Shield, Database } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
 interface SettingsPageProps {
     onExport: () => void;
-    onImport: (content: string) => void;
+    onImport: () => void;
     onClear: () => void;
 }
 
 export function SettingsPage({ onExport, onImport, onClear }: SettingsPageProps) {
-    const handleImport = async () => {
-        try {
-            const result = await DocumentPicker.getDocumentAsync({
-                type: 'application/json',
-                copyToCacheDirectory: true,
-            });
-            if (result.canceled || !result.assets?.[0]) return;
-            const content = await FileSystem.readAsStringAsync(result.assets[0].uri);
-            onImport(content);
-        } catch {
-            Alert.alert('Error', 'Failed to read the file.');
-        }
-    };
-
     function SettingRow({
         icon,
         iconBg,
@@ -108,21 +91,21 @@ export function SettingsPage({ onExport, onImport, onClear }: SettingsPageProps)
                     iconBg={['#4e48c0', '#332d80']}
                     icon={<Upload size={20} color="#a78bfa" />}
                     label="Export Coupons"
-                    description="Share your wallet as a JSON file"
+                    description="Share your wallet as a file"
                     onPress={onExport}
                 />
                 <SettingRow
                     iconBg={['#0a7a5e', '#0a6b52']}
                     icon={<Download size={20} color="#6ee7b7" />}
                     label="Import Coupons"
-                    description="Load coupons from a JSON file"
-                    onPress={handleImport}
+                    description="Load an exported file"
+                    onPress={onImport}
                 />
                 <SettingRow
                     iconBg={['#921f1f', '#5a0d0d']}
                     icon={<Trash2 size={20} color="#fca5a5" />}
                     label="Clear All Data"
-                    description="Permanently delete all coupons"
+                    description="Permanently delete all items"
                     onPress={onClear}
                     destructive
                 />
@@ -144,7 +127,7 @@ export function SettingsPage({ onExport, onImport, onClear }: SettingsPageProps)
                     <Shield size={16} color="#6366f1" />
                     <View>
                         <Text style={{ fontSize: 13, color: '#dde2f4', fontWeight: '500' }}>Coupon Wallet</Text>
-                        <Text style={{ fontSize: 11, color: '#a0aed4', marginTop: 1 }}>v1.0.0 — All data stored locally</Text>
+                        <Text style={{ fontSize: 11, color: '#a0aed4', marginTop: 1 }}>v2.0.0 — Synchronized Universal Build</Text>
                     </View>
                 </View>
             </ScrollView>

@@ -1,15 +1,7 @@
 import { useState } from 'react';
-import {
-    View,
-    Text,
-    TextInput,
-    Pressable,
-    ScrollView,
-    Alert,
-    SafeAreaView,
-} from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import type { Coupon, DiscountType } from '../lib/types';
+import type { Coupon, DiscountType, ItemType } from '../lib/types';
 
 interface CouponFormProps {
     initialData?: Coupon;
@@ -18,118 +10,123 @@ interface CouponFormProps {
 }
 
 export function CouponForm({ initialData, onSave, onCancel }: CouponFormProps) {
+    const defaultType: ItemType = 'coupon';
+    const [type, setType] = useState<ItemType>(initialData?.type || defaultType);
     const [title, setTitle] = useState(initialData?.title ?? '');
     const [description, setDescription] = useState(initialData?.description ?? '');
     const [discountType, setDiscountType] = useState<DiscountType>(initialData?.discountType ?? 'amount');
-    const [discountValue, setDiscountValue] = useState(
-        initialData?.discountValue ? String(initialData.discountValue) : ''
-    );
+    const [discountValue, setDiscountValue] = useState(initialData?.discountValue ? String(initialData.discountValue) : '');
+    const [initialValue, setInitialValue] = useState(initialData?.initialValue ? String(initialData.initialValue) : '');
+    const [remainingValue, setRemainingValue] = useState(initialData?.remainingValue ? String(initialData.remainingValue) : '');
     const [currency, setCurrency] = useState(initialData?.currency ?? 'ILS');
     const [expiryDate, setExpiryDate] = useState(initialData?.expiryDate ?? '');
     const [store, setStore] = useState(initialData?.store ?? '');
     const [category, setCategory] = useState(initialData?.category ?? '');
     const [code, setCode] = useState(initialData?.code ?? '');
+    const [sender, setSender] = useState(initialData?.sender ?? '');
+    const [event, setEvent] = useState(initialData?.event ?? '');
+    const [imageUrl, setImageUrl] = useState(initialData?.imageUrl ?? '');
+    const [barcodeData, setBarcodeData] = useState(initialData?.barcodeData ?? '');
 
     const handleSubmit = () => {
         if (!title.trim()) { Alert.alert('Validation', 'Title is required'); return; }
-        const val = Number(discountValue);
-        if (!discountValue || isNaN(val) || val <= 0) { Alert.alert('Validation', 'Value must be greater than 0'); return; }
-        if (discountType === 'percent' && val > 100) { Alert.alert('Validation', 'Percentage cannot exceed 100'); return; }
-        onSave({ title, description, discountType, discountValue: val, currency, expiryDate, store, category, code });
+
+        let finalDiscountValue;
+        let finalInitialValue;
+        let finalRemainingValue;
+
+        if (type === 'gift_card') {
+            const initial = Number(initialValue);
+            if (!initialValue || isNaN(initial) || initial <= 0) {
+                Alert.alert('Validation', 'Initial amount is required and must be > 0'); return;
+            }
+            finalInitialValue = initial;
+            const remaining = remainingValue ? Number(remainingValue) : initial;
+            if (isNaN(remaining) || remaining < 0 || remaining > initial) {
+                Alert.alert('Validation', 'Remaining balance must be valid and <= initial amount'); return;
+            }
+            finalRemainingValue = remaining;
+        } else {
+            const val = Number(discountValue);
+            if (!discountValue || isNaN(val) || val <= 0) { Alert.alert('Validation', 'Value must be greater than 0'); return; }
+            if (discountType === 'percent' && val > 100) { Alert.alert('Validation', 'Percentage cannot exceed 100'); return; }
+            finalDiscountValue = val;
+        }
+
+        onSave({
+            type, title, description, discountType, discountValue: finalDiscountValue,
+            initialValue: finalInitialValue, remainingValue: finalRemainingValue,
+            currency, expiryDate, store, category, code, sender, event, imageUrl, barcodeData
+        });
     };
 
-    const inputStyle = {
-        backgroundColor: '#27305a',
-        borderWidth: 1,
-        borderColor: '#3c4270',
-        borderRadius: 14,
-        paddingHorizontal: 16,
-        paddingVertical: 14,
-        color: '#f8fafc',
-        fontSize: 15,
-    };
-
-    const labelStyle = {
-        fontSize: 12,
-        fontWeight: '600' as const,
-        color: '#dde2f4',
-        marginBottom: 8,
-        letterSpacing: 0.5,
-        textTransform: 'uppercase' as const,
-    };
+    const inputStyle = { backgroundColor: '#27305a', borderWidth: 1, borderColor: '#3c4270', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, color: '#f8fafc', fontSize: 15 };
+    const labelStyle = { fontSize: 12, fontWeight: '600' as const, color: '#dde2f4', marginBottom: 8, letterSpacing: 0.5, textTransform: 'uppercase' as const };
 
     return (
-        <ScrollView
-            style={{ flex: 1, backgroundColor: '#1a1d38' }}
-            contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
-            keyboardShouldPersistTaps="handled"
-        >
+        <ScrollView style={{ flex: 1, backgroundColor: '#1a1d38' }} contentContainerStyle={{ padding: 20, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+
+            {/* Type Selector */}
+            <View style={{ flexDirection: 'row', backgroundColor: '#27305a', borderRadius: 14, padding: 4, marginBottom: 20, borderWidth: 1, borderColor: '#3c4270' }}>
+                {(['coupon', 'gift_card', 'voucher'] as ItemType[]).map((t) => {
+                    const active = type === t;
+                    return (
+                        <Pressable key={t} onPress={() => setType(t)} style={{ flex: 1, paddingVertical: 12, alignItems: 'center', backgroundColor: active ? '#252849' : 'transparent', borderRadius: 10 }}>
+                            <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#6366f1' : '#a0aed4', textTransform: 'capitalize' }}>{t.replace('_', ' ')}</Text>
+                        </Pressable>
+                    );
+                })}
+            </View>
+
             {/* Title */}
             <View style={{ marginBottom: 20 }}>
                 <Text style={labelStyle}>Title *</Text>
-                <TextInput
-                    style={inputStyle}
-                    placeholder="e.g. 50₪ off at Super-Pharm"
-                    placeholderTextColor="#a0aed4"
-                    value={title}
-                    onChangeText={setTitle}
-                />
+                <TextInput style={inputStyle} placeholder={type === 'gift_card' ? "e.g. Fox Home Birthday Card" : "e.g. 50₪ off at Super-Pharm"} placeholderTextColor="#a0aed4" value={title} onChangeText={setTitle} />
             </View>
 
-            {/* Type + Value */}
-            <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20 }}>
-                <View style={{ flex: 1 }}>
-                    <Text style={labelStyle}>Type</Text>
-                    <View style={{ flexDirection: 'row', borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: '#3c4270' }}>
-                        {(['amount', 'percent'] as DiscountType[]).map((t) => {
-                            const active = discountType === t;
-                            return (
-                                <Pressable
-                                    key={t}
-                                    onPress={() => setDiscountType(t)}
-                                    style={{ flex: 1, paddingVertical: 14, alignItems: 'center', backgroundColor: active ? '#6366f1' : '#27305a' }}
-                                >
-                                    <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#fff' : '#a0aed4' }}>
-                                        {t === 'amount' ? 'Amount' : 'Percent'}
-                                    </Text>
-                                </Pressable>
-                            );
-                        })}
+            {/* Values */}
+            {type === 'gift_card' ? (
+                <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20 }}>
+                    <View style={{ flex: 1 }}>
+                        <Text style={labelStyle}>Initial Value *</Text>
+                        <TextInput style={inputStyle} placeholder="0" placeholderTextColor="#a0aed4" value={initialValue} onChangeText={setInitialValue} keyboardType="decimal-pad" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                        <Text style={labelStyle}>Remaining Balance</Text>
+                        <TextInput style={inputStyle} placeholder={initialValue || "0"} placeholderTextColor="#a0aed4" value={remainingValue} onChangeText={setRemainingValue} keyboardType="decimal-pad" />
                     </View>
                 </View>
-                <View style={{ flex: 1 }}>
-                    <Text style={labelStyle}>Value *</Text>
-                    <TextInput
-                        style={inputStyle}
-                        placeholder="0"
-                        placeholderTextColor="#a0aed4"
-                        value={discountValue}
-                        onChangeText={setDiscountValue}
-                        keyboardType="decimal-pad"
-                    />
+            ) : (
+                <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20 }}>
+                    <View style={{ flex: 1 }}>
+                        <Text style={labelStyle}>Type</Text>
+                        <View style={{ flexDirection: 'row', borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: '#3c4270' }}>
+                            {(['amount', 'percent'] as DiscountType[]).map((t) => {
+                                const active = discountType === t;
+                                return (
+                                    <Pressable key={t} onPress={() => setDiscountType(t)} style={{ flex: 1, paddingVertical: 14, alignItems: 'center', backgroundColor: active ? '#6366f1' : '#27305a' }}>
+                                        <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#fff' : '#a0aed4' }}>{t === 'amount' ? 'Amount' : 'Percent'}</Text>
+                                    </Pressable>
+                                );
+                            })}
+                        </View>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                        <Text style={labelStyle}>Value *</Text>
+                        <TextInput style={inputStyle} placeholder="0" placeholderTextColor="#a0aed4" value={discountValue} onChangeText={setDiscountValue} keyboardType="decimal-pad" />
+                    </View>
                 </View>
-            </View>
+            )}
 
             {/* Currency */}
-            {discountType === 'amount' && (
+            {(type === 'gift_card' || discountType === 'amount') && (
                 <View style={{ marginBottom: 20 }}>
                     <Text style={labelStyle}>Currency</Text>
                     <View style={{ flexDirection: 'row', gap: 8 }}>
                         {['ILS', 'USD', 'EUR', 'GBP'].map((c) => {
                             const active = currency === c;
                             return (
-                                <Pressable
-                                    key={c}
-                                    onPress={() => setCurrency(c)}
-                                    style={{
-                                        paddingHorizontal: 16,
-                                        paddingVertical: 10,
-                                        borderRadius: 12,
-                                        borderWidth: 1,
-                                        borderColor: active ? '#6366f1' : '#3c4270',
-                                        backgroundColor: active ? '#4e48c0' : '#27305a',
-                                    }}
-                                >
+                                <Pressable key={c} onPress={() => setCurrency(c)} style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: active ? '#6366f1' : '#3c4270', backgroundColor: active ? '#4e48c0' : '#27305a' }}>
                                     <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#a78bfa' : '#a0aed4' }}>{c}</Text>
                                 </Pressable>
                             );
@@ -138,7 +135,7 @@ export function CouponForm({ initialData, onSave, onCancel }: CouponFormProps) {
                 </View>
             )}
 
-            {/* Store + Category */}
+            {/* Store & Category */}
             <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20 }}>
                 <View style={{ flex: 1 }}>
                     <Text style={labelStyle}>Store</Text>
@@ -150,59 +147,56 @@ export function CouponForm({ initialData, onSave, onCancel }: CouponFormProps) {
                 </View>
             </View>
 
-            {/* Expiry */}
-            <View style={{ marginBottom: 20 }}>
-                <Text style={labelStyle}>Expiry Date (YYYY-MM-DD)</Text>
-                <TextInput style={inputStyle} placeholder="2025-12-31" placeholderTextColor="#a0aed4" value={expiryDate} onChangeText={setExpiryDate} />
+            {/* Gift Sender & Event */}
+            <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20 }}>
+                <View style={{ flex: 1 }}>
+                    <Text style={labelStyle}>From / Sender</Text>
+                    <TextInput style={inputStyle} placeholder="e.g. Mom & Dad" placeholderTextColor="#a0aed4" value={sender} onChangeText={setSender} />
+                </View>
+                <View style={{ flex: 1 }}>
+                    <Text style={labelStyle}>Occasion</Text>
+                    <TextInput style={inputStyle} placeholder="e.g. Birthday" placeholderTextColor="#a0aed4" value={event} onChangeText={setEvent} />
+                </View>
             </View>
 
-            {/* Code */}
-            <View style={{ marginBottom: 20 }}>
-                <Text style={labelStyle}>Promo Code</Text>
-                <TextInput style={inputStyle} placeholder="e.g. SAVE20" placeholderTextColor="#a0aed4" value={code} onChangeText={setCode} />
+            {/* Expiry & Code */}
+            <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20 }}>
+                <View style={{ flex: 1 }}>
+                    <Text style={labelStyle}>Expiry (YYYY-MM-DD)</Text>
+                    <TextInput style={inputStyle} placeholder="2025-12-31" placeholderTextColor="#a0aed4" value={expiryDate} onChangeText={setExpiryDate} />
+                </View>
+                <View style={{ flex: 1 }}>
+                    <Text style={labelStyle}>Coupon/PIN</Text>
+                    <TextInput style={inputStyle} placeholder="e.g. SAVE20" placeholderTextColor="#a0aed4" value={code} onChangeText={setCode} />
+                </View>
+            </View>
+
+            {/* Barcode & Image */}
+            <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20 }}>
+                <View style={{ flex: 1 }}>
+                    <Text style={labelStyle}>Barcode Data</Text>
+                    <TextInput style={inputStyle} placeholder="e.g. 123456789" placeholderTextColor="#a0aed4" value={barcodeData} onChangeText={setBarcodeData} />
+                </View>
+                <View style={{ flex: 1 }}>
+                    <Text style={labelStyle}>Image URL</Text>
+                    <TextInput style={inputStyle} placeholder="https://..." placeholderTextColor="#a0aed4" value={imageUrl} onChangeText={setImageUrl} />
+                </View>
             </View>
 
             {/* Description */}
             <View style={{ marginBottom: 28 }}>
                 <Text style={labelStyle}>Notes</Text>
-                <TextInput
-                    style={[inputStyle, { height: 90, textAlignVertical: 'top' }]}
-                    placeholder="Terms & conditions, notes..."
-                    placeholderTextColor="#a0aed4"
-                    value={description}
-                    onChangeText={setDescription}
-                    multiline
-                    numberOfLines={3}
-                />
+                <TextInput style={[inputStyle, { height: 90, textAlignVertical: 'top' }]} placeholder="Terms & conditions, notes..." placeholderTextColor="#a0aed4" value={description} onChangeText={setDescription} multiline numberOfLines={3} />
             </View>
 
             {/* Buttons */}
             <View style={{ flexDirection: 'row', gap: 12 }}>
-                <Pressable
-                    onPress={onCancel}
-                    style={({ pressed }) => ({
-                        flex: 1,
-                        paddingVertical: 16,
-                        borderRadius: 16,
-                        alignItems: 'center',
-                        backgroundColor: pressed ? '#3c4270' : '#27305a',
-                        borderWidth: 1,
-                        borderColor: '#3c4270',
-                    })}
-                >
+                <Pressable onPress={onCancel} style={({ pressed }) => ({ flex: 1, paddingVertical: 16, borderRadius: 16, alignItems: 'center', backgroundColor: pressed ? '#3c4270' : '#27305a', borderWidth: 1, borderColor: '#3c4270' })}>
                     <Text style={{ fontWeight: '600', color: '#dde2f4', fontSize: 15 }}>Cancel</Text>
                 </Pressable>
-                <Pressable
-                    onPress={handleSubmit}
-                    style={{ flex: 1, borderRadius: 16, overflow: 'hidden' }}
-                >
-                    <LinearGradient
-                        colors={['#6366f1', '#8b5cf6']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 0 }}
-                        style={{ paddingVertical: 16, alignItems: 'center' }}
-                    >
-                        <Text style={{ fontWeight: '700', color: '#fff', fontSize: 15 }}>Save Coupon</Text>
+                <Pressable onPress={handleSubmit} style={{ flex: 1, borderRadius: 16, overflow: 'hidden' }}>
+                    <LinearGradient colors={['#6366f1', '#8b5cf6']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ paddingVertical: 16, alignItems: 'center' }}>
+                        <Text style={{ fontWeight: '700', color: '#fff', fontSize: 15 }}>Save Item</Text>
                     </LinearGradient>
                 </Pressable>
             </View>
