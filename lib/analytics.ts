@@ -37,5 +37,6 @@ export function trackEvent(eventName: AnalyticsEvent, payload?: EventPayload) {
     };
 
     // Replace this internal 'provider' with PostHog or Amplitude SDK later
+    // TODO: Integrate PostHog / Segment / Amplitude for Frontend logging here
     console.log(`[ANALYTICS] ${eventName}`, JSON.stringify(finalPayload));
 }

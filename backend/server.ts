@@ -33,12 +33,15 @@ const extractRequestSchema = z.object({
 
 app.post('/ai/extract', async (req, res) => {
     const requestId = req.header('X-Request-ID') || Math.random().toString(36).substring(7);
+    const sessionId = req.header('X-Session-ID') || 'unknown';
     const clientIp = req.ip || req.socket.remoteAddress;
 
     // Backend Analytics Logging Helper
     const trackBackendEvent = (eventName: string, payload: Record<string, any> = {}) => {
+        // TODO: Integrate PostHog / Segment Node.js SDK here
         console.log(`[ANALYTICS] ${eventName}`, JSON.stringify({
             requestId,
+            sessionId,
             timestamp: new Date().toISOString(),
             ...payload
         }));

@@ -4,7 +4,7 @@ import { ArrowLeft, Sparkles, CheckCircle2, AlertCircle } from 'lucide-react-nat
 import type { Coupon, ItemType, SourceType, GiftOrVoucherDraft } from '../lib/types';
 import { extractGiftFromText } from '../lib/ai/extractGiftFromText';
 import { LinearGradient } from 'expo-linear-gradient';
-import { trackEvent } from '../lib/analytics';
+import { trackEvent, sessionId } from '../lib/analytics';
 import { redactPII } from '../lib/redact';
 
 interface AddViaAIPageProps {
@@ -29,7 +29,9 @@ export function AddViaAIPage({ onSave, onCancel }: AddViaAIPageProps) {
     const [currentRequestId, setCurrentRequestId] = useState<string | null>(null);
     const [flowStartTime, setFlowStartTime] = useState<number | null>(null);
     const [hasTrackedPaste, setHasTrackedPaste] = useState(false);
-    const [lastSavedSignature, setLastSavedSignature] = useState<string | null>(null);
+
+    // Idempotency: generate a unique key for this flow attempt
+    const [idempotencyKey, setIdempotencyKey] = useState<string>(`idem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
 
     // Remote fetch state
     const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -62,6 +64,7 @@ export function AddViaAIPage({ onSave, onCancel }: AddViaAIPageProps) {
                     headers: {
                         'Content-Type': 'application/json',
                         'X-Request-ID': currentRequestId || requestId,
+                        'X-Session-ID': sessionId,
                     },
                     body: JSON.stringify({ sourceText: safeSourceText, sourceType }),
                 });
@@ -123,16 +126,8 @@ export function AddViaAIPage({ onSave, onCancel }: AddViaAIPageProps) {
             discountValue: draft.amount, // Redundant fallback for voucher/coupon
             event: draft.sourceType === 'whatsapp' ? 'Received via WhatsApp' : undefined,
             description: `Extracted via AI from ${draft.sourceType}.\nOriginal text:\n${draft.sourceText}`,
+            idempotencyKey // Phase 4 hardening requirement
         };
-
-        // Phase B: Idempotency Check
-        // Generate a signature of the final object to ensure we don't save the exact same thing twice in a row
-        const signature = JSON.stringify(finalItem);
-        if (signature === lastSavedSignature) {
-            console.log('[Idempotency] Ignoring duplicate save attempt');
-            return;
-        }
-        setLastSavedSignature(signature);
 
         try {
             onSave(finalItem);
@@ -145,14 +140,17 @@ export function AddViaAIPage({ onSave, onCancel }: AddViaAIPageProps) {
             }
         } catch (saveError: any) {
             console.error('[AI Final Save Error]', saveError);
-            trackEvent('parse_fail', { requestId: currentRequestId || undefined, error: 'save_duplicate_or_crash' });
-            setLastSavedSignature(null); // allow retry on explicit crash
+            trackEvent('parse_fail', { requestId: currentRequestId || undefined, error: 'save_crash' });
         }
     };
 
     const handleTextPaste = (text: string) => {
+        if (!rawText && text.trim()) {
+            // New interaction flow starts, refresh idempotency key
+            setIdempotencyKey(`idem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
+        }
         setRawText(text);
-        setLastSavedSignature(null); // Clear idempotency on new text
+
         if (text.trim() && !hasTrackedPaste) {
             trackEvent('paste_message');
             setHasTrackedPaste(true);
