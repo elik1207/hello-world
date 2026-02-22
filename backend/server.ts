@@ -82,7 +82,11 @@ app.post('/ai/extract', async (req, res) => {
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`[Backend] AI Parsing Service running on http://localhost:${PORT}`);
-    console.log(`[Backend] Try POST /ai/extract with { "sourceText": "..." }`);
-});
+if (process.env.NODE_ENV !== 'test') {
+    app.listen(PORT, () => {
+        console.log(`[Backend] AI Parsing Service running on http://localhost:${PORT}`);
+        console.log(`[Backend] Try POST /ai/extract with { "sourceText": "..." }`);
+    });
+}
+
+export default app;
