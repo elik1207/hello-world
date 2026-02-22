@@ -68,11 +68,11 @@ export function logEvent(eventName: string, properties: Record<string, any> = {}
     if (PROVIDER === 'posthog' && posthog) {
         posthog.capture(eventName, safeProperties);
         if (DEBUG) {
-            console.log(`[ANALYTICS HTTP] -> ${eventName}`, JSON.stringify(safeProperties));
+            console.log(`[ANALYTICS] ${eventName}`, JSON.stringify(safeProperties));
         }
     } else {
         if (DEBUG || !posthog) {
-            console.log(`[ANALYTICS LOCAL] ${eventName}`, JSON.stringify(safeProperties));
+            console.log(`[ANALYTICS] ${eventName}`, JSON.stringify(safeProperties));
         }
     }
 }

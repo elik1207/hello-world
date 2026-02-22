@@ -35,15 +35,15 @@ describe('lib/analyticsProvider', () => {
         }, 'test-session');
 
         expect(consoleSpy).toHaveBeenCalledWith(
-            '[ANALYTICS: paste_message]',
+            '[ANALYTICS] paste_message',
             expect.stringContaining('"sourceType":"whatsapp"')
         );
         expect(consoleSpy).toHaveBeenCalledWith(
-            '[ANALYTICS: paste_message]',
+            '[ANALYTICS] paste_message',
             expect.stringContaining('"hasAmount":true')
         );
         expect(consoleSpy).toHaveBeenCalledWith(
-            '[ANALYTICS: paste_message]',
+            '[ANALYTICS] paste_message',
             expect.stringContaining('"time_to_save_ms":1200')
         );
 

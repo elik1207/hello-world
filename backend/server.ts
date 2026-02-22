@@ -83,11 +83,11 @@ app.post('/ai/extract', async (req, res) => {
                 properties: safePayload
             });
             if (analyticsDebug) {
-                console.log(`[ANALYTICS HTTP] -> ${eventName}`, JSON.stringify(safePayload));
+                console.log(`[ANALYTICS] ${eventName}`, JSON.stringify(safePayload));
             }
         } else {
             if (analyticsDebug || !posthog) {
-                console.log(`[ANALYTICS LOCAL] ${eventName}`, JSON.stringify(safePayload));
+                console.log(`[ANALYTICS] ${eventName}`, JSON.stringify(safePayload));
             }
         }
     };
