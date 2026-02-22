@@ -2,6 +2,15 @@ import * as SQLite from 'expo-sqlite';
 import { Coupon, ItemType, DiscountType, CouponStatus } from './types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { generateFingerprint } from './fingerprint';
+import { z } from 'zod';
+
+export interface ImportReport {
+    schemaVersion: number;
+    imported: number;
+    skippedDuplicateFingerprint: number;
+    skippedDuplicateIdempotencyKey: number;
+    invalidItems: number;
+}
 
 const DB_NAME = 'wallet.db';
 
@@ -106,6 +115,12 @@ export async function isDuplicateFingerprint(fingerprint: string): Promise<boole
     return !!existing;
 }
 
+export async function isDuplicateIdempotencyKey(key: string): Promise<boolean> {
+    const db = await getDb();
+    const existing = await db.getFirstAsync<{ id: string }>('SELECT id FROM coupons WHERE idempotencyKey = ?', [key]);
+    return !!existing;
+}
+
 export async function upsertCoupon(coupon: Coupon, fingerprint?: string): Promise<void> {
     const db = await getDb();
     // Use INSERT OR REPLACE
@@ -138,55 +153,92 @@ export async function clearDb(): Promise<void> {
     await db.execAsync('DELETE FROM coupons');
 }
 
-export async function importCouponsToDb(jsonStr: string): Promise<boolean> {
+export async function importCouponsToDb(jsonStr: string): Promise<ImportReport> {
+    const report: ImportReport = {
+        schemaVersion: 1, // Default assumption for legacy arrays
+        imported: 0,
+        skippedDuplicateFingerprint: 0,
+        skippedDuplicateIdempotencyKey: 0,
+        invalidItems: 0
+    };
+
     try {
         const parsed = JSON.parse(jsonStr);
         let rawItems: any[] = [];
 
-        // Support importing both legacy raw arrays and new versioned exports
+        // Support schema V2, V1, and legacy plain arrays
         if (Array.isArray(parsed)) {
             rawItems = parsed;
-        } else if (parsed && typeof parsed === 'object' && parsed.version === 1) {
-            rawItems = Array.isArray(parsed.items) ? parsed.items : [];
-        } else {
-            return false;
-        }
-
-        // Basic validation for each item
-        let imported = 0;
-        for (const item of rawItems) {
-            if (
-                item && typeof item === 'object' &&
-                typeof item.id === 'string' &&
-                typeof item.title === 'string' &&
-                (item.status === 'active' || item.status === 'used' || item.status === 'expired')
-            ) {
-                const validItem: Coupon = {
-                    ...item,
-                    type: item.type || 'coupon',
-                    discountType: item.discountType || 'percent',
-                    currency: item.currency || 'ILS',
-                    createdAt: item.createdAt || Date.now(),
-                    updatedAt: item.updatedAt || Date.now(),
-                };
-
-                // Deterministic Deduplication Check
-                const expiryKey = 'expirationDate' in validItem ? (validItem as any).expirationDate : validItem.expiryDate;
-                const fp = await generateFingerprint(validItem.store, validItem.discountValue || validItem.initialValue, validItem.code, expiryKey);
-
-                const isDup = await isDuplicateFingerprint(fp);
-                if (!isDup) {
-                    await upsertCoupon(validItem, fp);
-                    imported++;
-                }
+        } else if (parsed && typeof parsed === 'object') {
+            if (parsed.schemaVersion === 2 || parsed.version === 1) {
+                report.schemaVersion = parsed.schemaVersion || parsed.version;
+                rawItems = Array.isArray(parsed.items) ? parsed.items : [];
             } else {
-                console.warn('Skipping invalid item during import:', item);
+                throw new Error("Unknown export schema");
             }
+        } else {
+            throw new Error("Invalid export structure");
         }
 
-        return imported > 0;
+        const CouponSchema = z.object({
+            id: z.string(),
+            title: z.string(),
+            type: z.enum(['coupon', 'gift_card', 'store_credit']).catch('coupon' as any),
+            status: z.enum(['active', 'used', 'expired']).catch('active' as any),
+            discountType: z.enum(['percent', 'fixed', 'item']).catch('percent' as any),
+            currency: z.string().catch('ILS'),
+            discountValue: z.number().optional().nullable(),
+            initialValue: z.number().optional().nullable(),
+            remainingValue: z.number().optional().nullable(),
+            expiryDate: z.string().optional().nullable(),
+            expirationDate: z.string().optional().nullable(),
+            store: z.string().optional().nullable(),
+            code: z.string().optional().nullable(),
+            idempotencyKey: z.string().optional().nullable(),
+            createdAt: z.number().optional().nullable(),
+            updatedAt: z.number().optional().nullable(),
+        }).passthrough(); // Accept other fields
+
+        for (const item of rawItems) {
+            const validation = CouponSchema.safeParse(item);
+            if (!validation.success) {
+                report.invalidItems++;
+                continue;
+            }
+
+            const validItem = validation.data as unknown as Coupon;
+
+            // Set defaults if missing
+            validItem.createdAt = validItem.createdAt || Date.now();
+            validItem.updatedAt = validItem.updatedAt || Date.now();
+
+            // 1. Check Idempotency Key deduplication
+            if (validItem.idempotencyKey) {
+                const isIdempotentDup = await isDuplicateIdempotencyKey(validItem.idempotencyKey);
+                if (isIdempotentDup) {
+                    report.skippedDuplicateIdempotencyKey++;
+                    continue;
+                }
+            }
+
+            // 2. Check Fingerprint deduplication
+            const expiryKey = 'expirationDate' in validItem ? (validItem as any).expirationDate : validItem.expiryDate;
+            const fp = await generateFingerprint(validItem.store, validItem.discountValue || validItem.initialValue, validItem.code, expiryKey);
+
+            const isFpDup = await isDuplicateFingerprint(fp);
+            if (isFpDup) {
+                report.skippedDuplicateFingerprint++;
+                continue;
+            }
+
+            // 3. Insert and increment
+            await upsertCoupon(validItem, fp);
+            report.imported++;
+        }
     } catch (e) {
         console.error('Import failed', e);
-        return false;
+        report.invalidItems++;
     }
+
+    return report;
 }

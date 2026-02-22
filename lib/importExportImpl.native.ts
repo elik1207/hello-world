@@ -6,9 +6,13 @@ import { getCoupons } from './db';
 export async function exportWallet(): Promise<boolean> {
     try {
         const coupons = await getCoupons();
-        const data = { version: 1, items: coupons };
+        const data = {
+            schemaVersion: 2,
+            exportedAt: new Date().toISOString(),
+            items: coupons
+        };
         const json = JSON.stringify(data, null, 2);
-        const filename = `coupon-wallet-${new Date().toISOString().split('T')[0]}.json`;
+        const filename = `coupon-wallet-${data.exportedAt.split('T')[0]}.json`;
 
         const fileUri = (FileSystem.cacheDirectory ?? '') + filename;
         await FileSystem.writeAsStringAsync(fileUri, json);

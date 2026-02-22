@@ -110,13 +110,22 @@ function App() {
             // We need to implement importCoupons logic correctly in db or importExportImpl.
             // Placeholder for now. We will call an async db method.
             const { importCouponsToDb } = await import('./lib/db');
-            const ok = await importCouponsToDb(content);
-            if (ok) {
+            const report = await importCouponsToDb(content);
+            if (report.imported > 0 || report.skippedDuplicateFingerprint > 0 || report.skippedDuplicateIdempotencyKey > 0) {
                 const updated = await getCoupons();
                 setCoupons(updated);
-                Alert.alert('✅ Imported', 'Coupons imported successfully!');
+
+                const lines = [
+                    `Imported: ${report.imported}`,
+                    report.skippedDuplicateFingerprint > 0 ? `Skipped (Duplicates): ${report.skippedDuplicateFingerprint}` : null,
+                    report.skippedDuplicateIdempotencyKey > 0 ? `Skipped (Already Saved): ${report.skippedDuplicateIdempotencyKey}` : null,
+                    report.invalidItems > 0 ? `Invalid items: ${report.invalidItems}` : null,
+                    `\nSchema Version: v${report.schemaVersion}`
+                ].filter(Boolean);
+
+                Alert.alert('✅ Import Complete', lines.join('\n'));
             } else {
-                Alert.alert('Import Failed', 'Invalid JSON format.');
+                Alert.alert('Import Failed', 'No valid items found or invalid JSON format.');
             }
         }
     };

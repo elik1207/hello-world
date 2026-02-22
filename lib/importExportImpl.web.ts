@@ -3,11 +3,15 @@ import { getCoupons } from './db';
 export async function exportWallet(): Promise<boolean> {
     try {
         const coupons = await getCoupons();
-        const data = { version: 1, items: coupons };
-        const json = JSON.stringify(data, null, 2);
+        const data = {
+            schemaVersion: 2,
+            exportedAt: new Date().toISOString(),
+            items: coupons
+        };
+        const jsonStr = JSON.stringify(data, null, 2);
         const filename = `coupon-wallet-${new Date().toISOString().split('T')[0]}.json`;
 
-        const blob = new Blob([json], { type: 'application/json' });
+        const blob = new Blob([jsonStr], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;

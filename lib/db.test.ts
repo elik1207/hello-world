@@ -58,10 +58,12 @@ describe('lib/db - Migrations & Deduplication', () => {
             code: 'ABC'
         }]);
 
-        await importCouponsToDb(jsonStr);
+        const report = await importCouponsToDb(jsonStr);
 
         // Since it's a dupe, upsert (runAsync) shouldn't be called
         expect(mockRunAsync).not.toHaveBeenCalled();
+        expect(report.imported).toBe(0);
+        expect(report.skippedDuplicateFingerprint).toBe(1);
     });
 
     it('import validation successfully merges new items', async () => {
@@ -77,18 +79,21 @@ describe('lib/db - Migrations & Deduplication', () => {
             }]
         });
 
-        const success = await importCouponsToDb(jsonStr);
+        const report = await importCouponsToDb(jsonStr);
 
-        expect(success).toBe(true);
+        expect(report.imported).toBe(1);
+        expect(report.schemaVersion).toBe(1);
         // It should try to insert/upsert the new value
         expect(mockRunAsync).toHaveBeenCalledWith(expect.stringContaining('INSERT OR REPLACE INTO coupons'), expect.any(Array));
     });
 
     it('rejects completely invalid JSON or raw text', async () => {
-        const successA = await importCouponsToDb('{"foo": "bar"}'); // Wrong schema
-        const successB = await importCouponsToDb('Hey check out this code 456'); // Not JSON
+        const reportA = await importCouponsToDb('{"foo": "bar"}'); // Wrong schema
+        const reportB = await importCouponsToDb('Hey check out this code 456'); // Not JSON
 
-        expect(successA).toBe(false);
-        expect(successB).toBe(false);
+        expect(reportA.invalidItems).toBeGreaterThan(0);
+        expect(reportA.imported).toBe(0);
+        expect(reportB.invalidItems).toBeGreaterThan(0);
+        expect(reportB.imported).toBe(0);
     });
 });
