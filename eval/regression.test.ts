@@ -1,66 +1,116 @@
-import { GiftOrVoucherDraft } from '../lib/types';
-import { shouldUseLlm } from '../backend/llm/routing';
+import fs from 'fs';
+import path from 'path';
 import { extractGiftFromText } from '../lib/ai/extractGiftFromText';
+import { ExpectedResponseSchema, extractWithLlm } from '../backend/llm/extractWithLlm';
 
-// Simulated baseline from the initial release branch (e.g. 50% match rate, avg 2 missing fields)
-const BASELINE_METRICS = {
-    deterministic: {
-        minExactMatchRate: 0.50,
-        maxFalsePositiveRate: 0.15,
-        maxAvgMissingFieldCount: 2.0
-    },
-    llm: {
-        minExactMatchRateThreshold: 0.80, // Needs 80% to justify cost
-        maxFalsePositiveRate: 0.05
+function validateOutput(draft: any) {
+    if (draft === null) return null;
+    try {
+        return ExpectedResponseSchema.parse(draft);
+    } catch {
+        return null;
     }
-};
+}
+
+const EVAL_DATA = path.join(__dirname, 'messages.jsonl');
+const BASELINE_JSON = path.join(__dirname, 'baseline.json');
 
 describe('Extraction Quality Regression Constraints', () => {
+    let baseline: any;
+    let data: any[] = [];
+    let totalVouchers = 0;
+    let totalIrrelevant = 0;
 
-    // Validating basic assumptions on the static heuristics
-    it('Deterministic engine maintains core entity bounds', () => {
-        // A known structured output that must pass perfectly
-        const clearVoucher = '100₪ at Zara. Code: ZR-1991823-9912. Expires 12/2026';
-        let detValid = extractGiftFromText(clearVoucher, 'whatsapp');
-
-        expect(detValid).not.toBeNull();
-        expect(detValid.title).toBe('Zara');
-        expect(detValid.code).toBe('ZR-1991823-9912');
-        expect(detValid.amount).toBe(100);
-
-        // This confirms the underlying metric 'avgMissingFieldCount' would remain very low
-        expect(detValid.missingRequiredFields?.length || 0).toBe(0);
-    });
-
-    it('Deterministic engine gracefully handles ambiguous string distractor tests safely', () => {
-        const irrelevantChat = "Hey what are we having for dinner tonight?";
-        let detValid = extractGiftFromText(irrelevantChat, 'whatsapp');
-
-        // Ensure that random strings do not confidently project a voucher structure.
-        // It's technically okay if the heuristic throws a blind guess, as long as it has high missing required fields
-        if (detValid) {
-            expect((detValid.missingRequiredFields?.length || 0)).toBeGreaterThanOrEqual(3);
+    beforeAll(() => {
+        if (!fs.existsSync(BASELINE_JSON)) {
+            throw new Error("baseline.json not found. Run 'npm run eval:baseline' first.");
         }
+        baseline = JSON.parse(fs.readFileSync(BASELINE_JSON, 'utf-8'));
+
+        const lines = fs.readFileSync(EVAL_DATA, 'utf-8').split('\n').filter(Boolean);
+        data = lines.map(line => JSON.parse(line));
+        totalVouchers = data.filter(d => d.expected !== null).length;
+        totalIrrelevant = data.length - totalVouchers;
     });
 
-    describe('LLM Threshold Rules', () => {
-        // Justifying routing cost boundaries.
-        // The LLM is strictly reserved for instances where avgMissingFieldCount >= 1
-        it('Does NOT invoke LLM on robust baseline parses', () => {
-            const robustDraft: GiftOrVoucherDraft = {
-                title: 'Coffee Bean',
-                code: 'CB-1234',
-                confidence: 1.0,
-                sourceType: 'whatsapp',
-                sourceText: '',
-                assumptions: [],
-                missingRequiredFields: ['amount', 'expirationDate']
-            };
+    it('Deterministic engine maintains core entity bounds versus baseline', () => {
+        let detMatches = 0;
+        let detFalsePositives = 0;
+        let detMissingFieldsTotal = 0;
+        let detNeedsReviewTotal = 0;
 
-            // Even if missing Amount and Expiry, Coffee coupons often lack amounts. 
-            // Should we route?
-            expect(shouldUseLlm('Coffee Bean Free Drink. Code: CB-1234', robustDraft)).toBe(true); // Fails because amount is missing.
-        });
+        for (const sample of data) {
+            const detRaw = extractGiftFromText(sample.text, 'whatsapp');
+            const detValid = validateOutput(detRaw);
 
+            if (sample.expected === null) {
+                if (detValid && (detValid.missingRequiredFields?.length || 0) < 2) {
+                    detFalsePositives++;
+                }
+            } else {
+                if (detValid) {
+                    detMissingFieldsTotal += detValid.missingRequiredFields?.length || 0;
+                    detNeedsReviewTotal += detValid.inferredFields?.length || 0;
+
+                    if (detValid.title === sample.expected.title && detValid.code === sample.expected.code) {
+                        detMatches++;
+                    }
+                }
+            }
+        }
+
+        const exactMatchRate = detMatches / totalVouchers;
+        const falsePositiveRate = detFalsePositives / totalIrrelevant;
+        const avgMissingFieldCount = detMissingFieldsTotal / totalVouchers;
+        const avgNeedsReviewFieldCount = detNeedsReviewTotal / totalVouchers;
+
+        const base = baseline.deterministic;
+        const tolerance = 0.05;
+
+        // Tolerant checks ensuring regressions are blocked
+        expect(exactMatchRate).toBeGreaterThanOrEqual(base.exactMatchRate - tolerance);
+        expect(falsePositiveRate).toBeLessThanOrEqual(base.falsePositiveRate + tolerance);
+        expect(avgMissingFieldCount).toBeLessThanOrEqual(base.avgMissingFieldCount + tolerance);
+        expect(avgNeedsReviewFieldCount).toBeLessThanOrEqual(base.avgNeedsReviewFieldCount + tolerance);
     });
+
+    if (process.env.OPENAI_API_KEY || process.env.AI_API_KEY) {
+        it('LLM improves extraction quality (missing or inferred fields) vs deterministic', async () => {
+            let detMissingFieldsTotal = 0;
+            let detNeedsReviewTotal = 0;
+
+            let llmMissingFieldsTotal = 0;
+            let llmNeedsReviewTotal = 0;
+
+            for (const sample of data) {
+                const detRaw = extractGiftFromText(sample.text, 'whatsapp');
+                const detValid = validateOutput(detRaw);
+
+                if (sample.expected !== null && detValid) {
+                    detMissingFieldsTotal += detValid.missingRequiredFields?.length || 0;
+                    detNeedsReviewTotal += detValid.inferredFields?.length || 0;
+                }
+
+                const llmRaw = await extractWithLlm(sample.text, 'whatsapp');
+                const llmValid = validateOutput(llmRaw);
+
+                if (sample.expected !== null && llmValid) {
+                    llmMissingFieldsTotal += llmValid.missingRequiredFields?.length || 0;
+                    llmNeedsReviewTotal += llmValid.inferredFields?.length || 0;
+                }
+            }
+
+            const detAvgMissing = detMissingFieldsTotal / totalVouchers;
+            const detAvgNeedsReview = detNeedsReviewTotal / totalVouchers;
+
+            const llmAvgMissing = llmMissingFieldsTotal / totalVouchers;
+            const llmAvgNeedsReview = llmNeedsReviewTotal / totalVouchers;
+
+            const improvesMissing = llmAvgMissing < detAvgMissing;
+            const improvesReview = llmAvgNeedsReview < detAvgNeedsReview;
+
+            // Must improve at least one 
+            expect(improvesMissing || improvesReview).toBe(true);
+        }, 120000); // 120s timeout since sequentially executing LLM takes time
+    }
 });

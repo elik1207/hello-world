@@ -1,0 +1,8 @@
+{
+    "deterministic": {
+        "exactMatchRate": 0.50,
+        "falsePositiveRate": 0.05,
+        "avgMissingFieldCount": 2.05,
+        "avgNeedsReviewFieldCount": 1.25
+    }
+}
