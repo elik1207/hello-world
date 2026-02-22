@@ -7,6 +7,8 @@ import { z } from 'zod';
 const EVAL_DATA = path.join(__dirname, 'messages.jsonl');
 const OUTPUT_JSON = path.join(__dirname, 'results.json');
 const OUTPUT_MD = path.join(__dirname, 'results.md');
+const BASELINE_JSON = path.join(__dirname, 'baseline.json');
+const isBaselineMode = process.argv.includes('--baseline');
 
 // Use native zod to strictly validate
 function validateOutput(draft: any) {
@@ -22,7 +24,7 @@ async function runEval() {
     const lines = fs.readFileSync(EVAL_DATA, 'utf-8').split('\n').filter(Boolean);
     const data = lines.map(line => JSON.parse(line));
 
-    let runLlm = !!process.env.OPENAI_API_KEY || !!process.env.AI_API_KEY;
+    let runLlm = (!isBaselineMode) && (!!process.env.OPENAI_API_KEY || !!process.env.AI_API_KEY);
 
     let detMatches = 0;
     let detFalsePositives = 0;
@@ -115,6 +117,20 @@ async function runEval() {
             avgLatencyMs: llmCalls > 0 ? Object.is(Math.round(llmTotalLatency / llmCalls), -0) ? 0 : Math.round(llmTotalLatency / llmCalls) : 0
         } : null
     };
+
+    if (isBaselineMode) {
+        const baselineData = {
+            deterministic: {
+                exactMatchRate: parseFloat(metrics.deterministic.exactMatchRate),
+                falsePositiveRate: parseFloat(metrics.deterministic.falsePositiveRate),
+                avgMissingFieldCount: parseFloat(metrics.deterministic.avgMissingFieldCount),
+                avgNeedsReviewFieldCount: parseFloat(metrics.deterministic.avgNeedsReviewFieldCount)
+            }
+        };
+        fs.writeFileSync(BASELINE_JSON, JSON.stringify(baselineData, null, 2));
+        console.log(`Baseline complete. See /eval/baseline.json`);
+        return;
+    }
 
     fs.writeFileSync(OUTPUT_JSON, JSON.stringify(metrics, null, 2));
 

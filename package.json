@@ -10,6 +10,7 @@
     "tunnel": "expo start --tunnel",
     "test": "jest --passWithNoTests",
     "eval": "npx ts-node eval/runEval.ts",
+    "eval:baseline": "npx ts-node eval/runEval.ts --baseline",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
