@@ -178,6 +178,11 @@ function App() {
                     initialData={editingCoupon}
                     onSave={handleSave}
                     onCancel={() => setView('wallet')}
+                    onToggleStatus={async (c) => {
+                        await handleToggleStatus(c);
+                        setView('wallet');
+                        setEditingCoupon(undefined);
+                    }}
                 />
             )}
             {view === 'add-ai' && (

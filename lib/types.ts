@@ -24,6 +24,8 @@ export interface Coupon {
     imageUrl?: string;    // Added optional image URL
     barcodeData?: string; // Added optional barcode/QR data
     idempotencyKey?: string; // Phase 4 hardening: prevent duplicate saves
+    missingFieldCount?: number; // V4 explicit mapping
+    needsReviewFieldCount?: number; // V4 explicit mapping
     createdAt: number;
     updatedAt: number;
 }

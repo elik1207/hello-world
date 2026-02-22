@@ -103,6 +103,30 @@ export async function initDb(): Promise<void> {
         await db.execAsync(`PRAGMA user_version = ${currentVersion}`);
     }
 
+    if (currentVersion === 3) {
+        // v4: Quality flags columns & amount indexing
+        await db.execAsync(`
+            ALTER TABLE coupons ADD COLUMN missingFieldCount INTEGER DEFAULT 0;
+            ALTER TABLE coupons ADD COLUMN needsReviewFieldCount INTEGER DEFAULT 0;
+
+            CREATE INDEX IF NOT EXISTS idx_coupons_amount ON coupons(discountValue, initialValue);
+            CREATE INDEX IF NOT EXISTS idx_coupons_quality ON coupons(missingFieldCount, needsReviewFieldCount);
+        `);
+        currentVersion = 4;
+        await db.execAsync(`PRAGMA user_version = ${currentVersion}`);
+
+        // Backfill quality flags for existing items safely
+        const { computeMissingFieldCount, computeNeedsReviewFieldCount } = await import('./quality');
+        const existing = await db.getAllAsync<{ id: string, store: string, title: string, discountValue: number, initialValue: number, code: string }>('SELECT id, store, title, discountValue, initialValue, code FROM coupons');
+        for (const c of existing) {
+            await db.runAsync('UPDATE coupons SET missingFieldCount = ?, needsReviewFieldCount = ? WHERE id = ?', [
+                computeMissingFieldCount(c),
+                computeNeedsReviewFieldCount(c),
+                c.id
+            ]);
+        }
+    }
+
     // Attempt migration from AsyncStorage ONE TIME
     await migrateFromAsyncStorage(db);
 }
@@ -173,10 +197,12 @@ export async function listCoupons(opts: ListCouponsOptions): Promise<Coupon[]> {
         params.push(opts.statusFilter);
     }
 
-    // Note: Quality flags rely heavily on parsed JSON or JS logic. 
-    // Since SQL natively testing JS logic is complex without JSON1 extracts on arbitrary rows, 
-    // we'll filter those down in JS if requested, but fetch the superset efficiently.
-    // However, if the query strictly filters down to native boundaries first, the JS overhead is minimal.
+    if (opts.needsReviewOnly) {
+        query += ` AND needsReviewFieldCount > 0`;
+    }
+    if (opts.missingOnly) {
+        query += ` AND missingFieldCount > 0`;
+    }
 
     const sortField = opts.sortBy === 'expiryDate' ? 'expiryDate' :
         opts.sortBy === 'amount' ? 'COALESCE(discountValue, initialValue, 0)' :
@@ -210,25 +236,7 @@ export async function listCoupons(opts: ListCouponsOptions): Promise<Coupon[]> {
         tags: row.tags ? JSON.parse(row.tags) : undefined,
     } as Coupon));
 
-    // Client-side execution of Quality Flag filters since they rely on dynamic parsing 
-    // of missing fields (e.g. checking if store & initialValue/discountValue are blank)
-    if (opts.needsReviewOnly || opts.missingOnly) {
-        items = items.filter(item => {
-            // Replicate `qualityFlags.ts` logic implicitly inline for offline filtering
-            let missingCount = 0;
-            if (!item.store && !item.title) missingCount++;
-            if (!item.discountValue && !item.initialValue) missingCount++;
-            if (!item.code) missingCount++;
-
-            let needsReview = 0;
-            if (item.code && item.code.length < 4) needsReview++; // Ambiguous code
-
-            if (opts.needsReviewOnly && opts.missingOnly) return needsReview > 0 && missingCount > 0;
-            if (opts.needsReviewOnly) return needsReview > 0;
-            if (opts.missingOnly) return missingCount > 0;
-            return true;
-        });
-    }
+    // Client-side execution removed since Quality Flags exist within native SQLite query bounds
 
     return items;
 }
@@ -256,15 +264,21 @@ export async function isDuplicateIdempotencyKey(key: string): Promise<boolean> {
 
 export async function upsertCoupon(coupon: Coupon, fingerprint?: string): Promise<void> {
     const db = await getDb();
+    const { computeMissingFieldCount, computeNeedsReviewFieldCount } = await import('./quality');
+
+    const missingFieldCount = computeMissingFieldCount(coupon);
+    const needsReviewFieldCount = computeNeedsReviewFieldCount(coupon);
+
     // Use INSERT OR REPLACE
     await db.runAsync(`
         INSERT OR REPLACE INTO coupons (
             id, type, title, description, discountType, discountValue,
             initialValue, remainingValue, currency, expiryDate, store,
             category, code, status, sender, event, imageUrl, barcodeData,
-            idempotencyKey, createdAt, updatedAt, fingerprint, usedAt, tags
+            idempotencyKey, createdAt, updatedAt, fingerprint, usedAt, tags,
+            missingFieldCount, needsReviewFieldCount
         ) VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
     `, [
         coupon.id, coupon.type, coupon.title, coupon.description || null, coupon.discountType,
@@ -273,7 +287,8 @@ export async function upsertCoupon(coupon: Coupon, fingerprint?: string): Promis
         coupon.code || null, coupon.status, coupon.sender || null, coupon.event || null,
         coupon.imageUrl || null, coupon.barcodeData || null, coupon.idempotencyKey || null,
         coupon.createdAt || Date.now(), coupon.updatedAt || Date.now(), fingerprint || null,
-        coupon.usedAt || null, coupon.tags ? JSON.stringify(coupon.tags) : null
+        coupon.usedAt || null, coupon.tags ? JSON.stringify(coupon.tags) : null,
+        missingFieldCount, needsReviewFieldCount
     ]);
 }
 

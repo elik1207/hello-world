@@ -88,13 +88,19 @@ export function CouponCard({ coupon, onEdit, onDelete, onToggleStatus }: CouponC
         badgeTextColor = '#6ee7b7';
     }
 
-    let missingCount = 0;
-    if (!coupon.store && !coupon.title) missingCount++;
-    if (!coupon.discountValue && !coupon.initialValue) missingCount++;
-    if (!coupon.code) missingCount++;
+    let missingCount = coupon.missingFieldCount;
+    if (missingCount === undefined) {
+        missingCount = 0;
+        if (!coupon.store && !coupon.title) missingCount++;
+        if (!coupon.discountValue && !coupon.initialValue) missingCount++;
+        if (!coupon.code) missingCount++;
+    }
 
-    let needsReviewCount = 0;
-    if (coupon.code && coupon.code.length < 4) needsReviewCount++;
+    let needsReviewCount = coupon.needsReviewFieldCount;
+    if (needsReviewCount === undefined) {
+        needsReviewCount = 0;
+        if (coupon.code && coupon.code.length < 4) needsReviewCount++;
+    }
 
     const dimmed = isUsed || isExpired;
     const TypeIcon = coupon.type === 'gift_card' ? Gift : coupon.type === 'voucher' ? Ticket : Tag;

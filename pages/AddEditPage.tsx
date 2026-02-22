@@ -7,9 +7,10 @@ interface AddEditPageProps {
     initialData?: Coupon;
     onSave: (data: Omit<Coupon, 'id' | 'createdAt' | 'updatedAt' | 'status'>) => void;
     onCancel: () => void;
+    onToggleStatus?: (coupon: Coupon) => void;
 }
 
-export function AddEditPage({ initialData, onSave, onCancel }: AddEditPageProps) {
+export function AddEditPage({ initialData, onSave, onCancel, onToggleStatus }: AddEditPageProps) {
     return (
         <View style={{ flex: 1, backgroundColor: '#1a1d38' }}>
             <LinearGradient
@@ -32,7 +33,7 @@ export function AddEditPage({ initialData, onSave, onCancel }: AddEditPageProps)
                 style={{ flex: 1 }}
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             >
-                <CouponForm initialData={initialData} onSave={onSave} onCancel={onCancel} />
+                <CouponForm initialData={initialData} onSave={onSave} onCancel={onCancel} onToggleStatus={onToggleStatus} />
             </KeyboardAvoidingView>
         </View>
     );

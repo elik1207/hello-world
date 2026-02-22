@@ -7,9 +7,10 @@ interface CouponFormProps {
     initialData?: Coupon;
     onSave: (data: Omit<Coupon, 'id' | 'createdAt' | 'updatedAt' | 'status'>) => void;
     onCancel: () => void;
+    onToggleStatus?: (coupon: Coupon) => void;
 }
 
-export function CouponForm({ initialData, onSave, onCancel }: CouponFormProps) {
+export function CouponForm({ initialData, onSave, onCancel, onToggleStatus }: CouponFormProps) {
     const defaultType: ItemType = 'coupon';
     const [type, setType] = useState<ItemType>(initialData?.type || defaultType);
     const [title, setTitle] = useState(initialData?.title ?? '');
@@ -188,6 +189,33 @@ export function CouponForm({ initialData, onSave, onCancel }: CouponFormProps) {
                 <Text style={labelStyle}>Notes</Text>
                 <TextInput style={[inputStyle, { height: 90, textAlignVertical: 'top' }]} placeholder="Terms & conditions, notes..." placeholderTextColor="#a0aed4" value={description} onChangeText={setDescription} multiline numberOfLines={3} />
             </View>
+
+            {/* Status Toggle UX for existing items */}
+            {initialData && onToggleStatus && (
+                <View style={{ marginBottom: 20 }}>
+                    <Text style={labelStyle}>Status Management</Text>
+                    <Pressable
+                        onPress={() => onToggleStatus(initialData)}
+                        style={({ pressed }) => ({
+                            backgroundColor: initialData.status === 'used' ? '#1a1d38' : '#332d80',
+                            borderWidth: 1,
+                            borderColor: initialData.status === 'used' ? '#6366f1' : '#3c4270',
+                            borderRadius: 14,
+                            padding: 16,
+                            alignItems: 'center',
+                            opacity: pressed ? 0.8 : 1
+                        })}
+                    >
+                        <Text style={{
+                            fontSize: 14,
+                            fontWeight: '700',
+                            color: initialData.status === 'used' ? '#6366f1' : '#dde2f4'
+                        }}>
+                            {initialData.status === 'used' ? 'Mark as Active (Undo)' : 'Mark as Used'}
+                        </Text>
+                    </Pressable>
+                </View>
+            )}
 
             {/* Buttons */}
             <View style={{ flexDirection: 'row', gap: 12 }}>

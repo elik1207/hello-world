@@ -138,6 +138,32 @@ describe('lib/db - Migrations & Deduplication', () => {
         expect(report.skippedDuplicateFingerprint).toBe(0);
         expect(mockRunAsync).not.toHaveBeenCalled(); // No insertion
     });
+
+    it('upsertCoupon translates quality logic and usedAt fields accurately', async () => {
+        const { upsertCoupon } = await import('./db');
+        await upsertCoupon({
+            id: 'demo-123',
+            type: 'coupon',
+            title: 'Mock Deals',
+            discountType: 'percent',
+            currency: 'ILS',
+            status: 'used',
+            usedAt: '2024-05-01T12:00:00Z',
+            // Notice: omitted store, code, value. missingFields should be > 0.
+            createdAt: 1000,
+            updatedAt: 1000,
+        });
+
+        expect(mockRunAsync).toHaveBeenCalledWith(
+            expect.stringContaining('INSERT OR REPLACE INTO coupons'),
+            expect.arrayContaining([
+                'demo-123',
+                '2024-05-01T12:00:00Z', // usedAt
+                3, // missingFieldCount (store/title(no store), values, code) -> actually title exists, so 2 missing (values, code)
+                0  // needsReviewFieldCount
+            ])
+        );
+    });
 });
 
 describe('lib/db - Search & Filter (listCoupons)', () => {
@@ -176,17 +202,15 @@ describe('lib/db - Search & Filter (listCoupons)', () => {
         );
     });
 
-    it('listCoupons executes JS quality flag filters offline after SQL retrieve', async () => {
-        mockGetAllAsync.mockResolvedValueOnce([
-            { id: '1', store: 'KSP', code: '123' }, // needs review (code < 4)
-            { id: '2', store: 'Zara', code: 'LONG-CODE-OK' } // valid
-        ]);
+    it('listCoupons executes quality flag filters natively via SQLite', async () => {
+        mockGetAllAsync.mockResolvedValueOnce([]);
         const { listCoupons } = await import('./db');
-        const results = await listCoupons({ needsReviewOnly: true });
+        await listCoupons({ needsReviewOnly: true });
 
-        // SQL executes normally, JS mapping filters it down
-        expect(results.length).toBe(1);
-        expect(results[0].id).toBe('1');
+        expect(mockGetAllAsync).toHaveBeenCalledWith(
+            expect.stringContaining('AND needsReviewFieldCount > 0'),
+            expect.any(Array)
+        );
     });
 });
 
