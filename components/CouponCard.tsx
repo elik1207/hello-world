@@ -88,6 +88,14 @@ export function CouponCard({ coupon, onEdit, onDelete, onToggleStatus }: CouponC
         badgeTextColor = '#6ee7b7';
     }
 
+    let missingCount = 0;
+    if (!coupon.store && !coupon.title) missingCount++;
+    if (!coupon.discountValue && !coupon.initialValue) missingCount++;
+    if (!coupon.code) missingCount++;
+
+    let needsReviewCount = 0;
+    if (coupon.code && coupon.code.length < 4) needsReviewCount++;
+
     const dimmed = isUsed || isExpired;
     const TypeIcon = coupon.type === 'gift_card' ? Gift : coupon.type === 'voucher' ? Ticket : Tag;
 
@@ -164,6 +172,18 @@ export function CouponCard({ coupon, onEdit, onDelete, onToggleStatus }: CouponC
                                 {isExpired && <AlertCircle size={10} color={badgeTextColor} />}
                                 {!isExpired && !isUsed && daysLeft !== null && daysLeft <= 7 && <Clock size={10} color={badgeTextColor} />}
                                 <Text style={{ fontSize: 11, color: badgeTextColor, fontWeight: '600' }}>{badgeText}</Text>
+                            </View>
+                        )}
+                        {missingCount > 0 && !isExpired && !isUsed && (
+                            <View style={{ backgroundColor: '#ef444422', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 4 }}>
+                                <AlertCircle size={10} color="#ef4444" />
+                                <Text style={{ fontSize: 11, color: "#ef4444", fontWeight: '600' }}>Missing Fields</Text>
+                            </View>
+                        )}
+                        {needsReviewCount > 0 && !isExpired && !isUsed && (
+                            <View style={{ backgroundColor: '#f59e0b22', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 4 }}>
+                                <AlertCircle size={10} color="#f59e0b" />
+                                <Text style={{ fontSize: 11, color: "#f59e0b", fontWeight: '600' }}>Needs Review</Text>
                             </View>
                         )}
                     </View>

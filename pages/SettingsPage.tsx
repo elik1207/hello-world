@@ -1,7 +1,9 @@
-import { View, Text, Pressable, ScrollView, SafeAreaView } from 'react-native';
+import { useState, useEffect } from 'react';
+import { View, Text, Pressable, ScrollView, SafeAreaView, Switch } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { Download, Upload, Trash2, ChevronRight, Shield, Database } from 'lucide-react-native';
+import { Download, Upload, Trash2, ChevronRight, Shield, Database, Bell } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { getReminderSettings, setReminderSettings } from '../lib/reminders';
 
 interface SettingsPageProps {
     onExport: () => void;
@@ -10,6 +12,26 @@ interface SettingsPageProps {
 }
 
 export function SettingsPage({ onExport, onImport, onClear }: SettingsPageProps) {
+    const [remindersEnabled, setRemindersEnabled] = useState(true);
+    const [remindDaysBefore, setRemindDaysBefore] = useState(3);
+
+    useEffect(() => {
+        getReminderSettings().then(cfg => {
+            setRemindersEnabled(cfg.enabled);
+            setRemindDaysBefore(cfg.daysBefore);
+        });
+    }, []);
+
+    const toggleReminders = async (val: boolean) => {
+        setRemindersEnabled(val);
+        await setReminderSettings(val, remindDaysBefore);
+    };
+
+    const changeDays = async (days: number) => {
+        setRemindDaysBefore(days);
+        await setReminderSettings(remindersEnabled, days);
+    };
+
     function SettingRow({
         icon,
         iconBg,
@@ -109,6 +131,61 @@ export function SettingsPage({ onExport, onImport, onClear }: SettingsPageProps)
                     onPress={onClear}
                     destructive
                 />
+
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 24, marginBottom: 12 }}>
+                    <Bell size={12} color="#a0aed4" />
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#a0aed4', letterSpacing: 1, textTransform: 'uppercase' }}>
+                        Notifications & Alerts
+                    </Text>
+                </View>
+
+                <View style={{
+                    backgroundColor: '#27305a',
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    borderColor: '#3c4270',
+                    overflow: 'hidden'
+                }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, borderBottomColor: '#3c4270' }}>
+                        <View style={{ flex: 1, paddingRight: 16 }}>
+                            <Text style={{ fontSize: 15, fontWeight: '600', color: '#f8fafc' }}>Local Reminders</Text>
+                            <Text style={{ fontSize: 12, color: '#a0aed4', marginTop: 2 }}>Get alerts before coupons expire</Text>
+                        </View>
+                        <Switch
+                            value={remindersEnabled}
+                            onValueChange={toggleReminders}
+                            trackColor={{ false: '#3c4270', true: '#6366f1' }}
+                            thumbColor={'#fff'}
+                        />
+                    </View>
+
+                    {remindersEnabled && (
+                        <View style={{ padding: 16 }}>
+                            <Text style={{ fontSize: 13, color: '#dde2f4', fontWeight: '500', marginBottom: 12 }}>Remind me prior to expiration</Text>
+                            <View style={{ flexDirection: 'row', gap: 8 }}>
+                                {[1, 3, 7, 14].map(days => (
+                                    <Pressable
+                                        key={days}
+                                        onPress={() => changeDays(days)}
+                                        style={{
+                                            flex: 1,
+                                            paddingVertical: 8,
+                                            alignItems: 'center',
+                                            backgroundColor: remindDaysBefore === days ? '#6366f1' : '#1a1d38',
+                                            borderRadius: 8,
+                                            borderWidth: 1,
+                                            borderColor: remindDaysBefore === days ? '#8b5cf6' : '#3c4270',
+                                        }}
+                                    >
+                                        <Text style={{ fontSize: 13, fontWeight: '600', color: remindDaysBefore === days ? '#fff' : '#a0aed4' }}>
+                                            {days}d
+                                        </Text>
+                                    </Pressable>
+                                ))}
+                            </View>
+                        </View>
+                    )}
+                </View>
 
                 {/* App Version */}
                 <View

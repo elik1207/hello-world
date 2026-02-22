@@ -18,7 +18,8 @@ export type AnalyticsEvent =
     | 'parse_fail'
     | 'clarify_shown'
     | 'field_edited'
-    | 'save_success';
+    | 'save_success'
+    | 'status_updated';
 
 export interface EventPayload {
     requestId?: string;

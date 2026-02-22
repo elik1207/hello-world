@@ -17,6 +17,8 @@ export interface Coupon {
     category?: string;
     code?: string;
     status: CouponStatus; // Derived or user-set
+    usedAt?: string;      // ISO string explicitly mapping status transitions
+    tags?: string[];      // Array of string descriptors
     sender?: string;      // Added optional sender
     event?: string;       // Added optional event (e.g., birthday)
     imageUrl?: string;    // Added optional image URL

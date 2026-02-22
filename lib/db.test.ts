@@ -139,3 +139,83 @@ describe('lib/db - Migrations & Deduplication', () => {
         expect(mockRunAsync).not.toHaveBeenCalled(); // No insertion
     });
 });
+
+describe('lib/db - Search & Filter (listCoupons)', () => {
+    beforeEach(() => { jest.clearAllMocks(); });
+
+    it('listCoupons injects LIKE queries safely on searchTerm matches', async () => {
+        mockGetAllAsync.mockResolvedValueOnce([]);
+        const { listCoupons } = await import('./db');
+        await listCoupons({ searchText: 'Zara' });
+
+        expect(mockGetAllAsync).toHaveBeenCalledWith(
+            expect.stringContaining('OR store LIKE ? OR code LIKE ?'),
+            expect.arrayContaining(['%Zara%'])
+        );
+    });
+
+    it('listCoupons builds ascending expiryDate orders pushing nulls to back', async () => {
+        mockGetAllAsync.mockResolvedValueOnce([{ id: 'mock' }]);
+        const { listCoupons } = await import('./db');
+        await listCoupons({ sortBy: 'expiryDate', sortDir: 'asc' });
+
+        expect(mockGetAllAsync).toHaveBeenCalledWith(
+            expect.stringContaining('ORDER BY CASE WHEN expiryDate IS NULL OR expiryDate = \'\' THEN 1 ELSE 0 END, expiryDate ASC'),
+            expect.any(Array)
+        );
+    });
+
+    it('listCoupons isolates status filters actively', async () => {
+        mockGetAllAsync.mockResolvedValueOnce([]);
+        const { listCoupons } = await import('./db');
+        await listCoupons({ statusFilter: 'used' });
+
+        expect(mockGetAllAsync).toHaveBeenCalledWith(
+            expect.stringContaining('AND status = ?'),
+            expect.arrayContaining(['used'])
+        );
+    });
+
+    it('listCoupons executes JS quality flag filters offline after SQL retrieve', async () => {
+        mockGetAllAsync.mockResolvedValueOnce([
+            { id: '1', store: 'KSP', code: '123' }, // needs review (code < 4)
+            { id: '2', store: 'Zara', code: 'LONG-CODE-OK' } // valid
+        ]);
+        const { listCoupons } = await import('./db');
+        const results = await listCoupons({ needsReviewOnly: true });
+
+        // SQL executes normally, JS mapping filters it down
+        expect(results.length).toBe(1);
+        expect(results[0].id).toBe('1');
+    });
+});
+
+describe('lib/db - Status automation (autoExpireCoupons)', () => {
+    beforeEach(() => { jest.clearAllMocks(); });
+
+    it('autoExpireCoupons skips if nothing is expired', async () => {
+        // Mock get active coupons returning something valid next month
+        const futureDate = new Date();
+        futureDate.setMonth(futureDate.getMonth() + 1);
+        mockGetAllAsync.mockResolvedValueOnce([{ id: 'c1', expiryDate: futureDate.toISOString() }]);
+
+        const { autoExpireCoupons } = await import('./db');
+        await autoExpireCoupons();
+
+        expect(mockRunAsync).not.toHaveBeenCalled();
+    });
+
+    it('autoExpireCoupons fires UPDATE on explicit expiration boundaries', async () => {
+        const pastDate = new Date();
+        pastDate.setMonth(pastDate.getMonth() - 1);
+        mockGetAllAsync.mockResolvedValueOnce([{ id: 'c2', expiryDate: pastDate.toISOString() }]);
+
+        const { autoExpireCoupons } = await import('./db');
+        await autoExpireCoupons();
+
+        expect(mockRunAsync).toHaveBeenCalledWith(
+            'UPDATE coupons SET status = ? WHERE id = ?',
+            ['expired', 'c2']
+        );
+    });
+});

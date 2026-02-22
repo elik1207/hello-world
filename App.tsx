@@ -6,6 +6,7 @@ import { initDb, getCoupons, upsertCoupon, deleteCoupon, clearDb, isDuplicateFin
 import { generateFingerprint } from './lib/fingerprint';
 import { generateId } from './lib/utils';
 import { exportWallet, importWalletFile } from './lib/importExport';
+import { scheduleCouponReminder, cancelCouponReminder } from './lib/reminders';
 import { BottomNav } from './components/BottomNav';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { WalletPage } from './pages/WalletPage';
@@ -41,7 +42,13 @@ function App() {
     const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
 
     useEffect(() => {
-        initDb().then(() => getCoupons().then(setCoupons)).catch(console.error);
+        initDb().then(async () => {
+            const { autoExpireCoupons } = await import('./lib/db');
+            await autoExpireCoupons();
+            const loaded = await getCoupons();
+            // Optional: iterate active items to retroactively inject lost reminders when settings flip. Skipping for now.
+            setCoupons(loaded);
+        }).catch(console.error);
     }, []);
 
     const handleNavChange = (newView: AppView) => {
@@ -57,6 +64,9 @@ function App() {
             const fp = await generateFingerprint(updated.store, updated.discountValue || updated.initialValue, updated.code, expiryKey);
 
             await upsertCoupon(updated, fp);
+            if (updated.status === 'active') {
+                await scheduleCouponReminder(updated);
+            }
             setCoupons((curr) => curr.map((c) => (c.id === editingCoupon.id ? updated : c)));
         } else {
             // Phase 4: True Idempotency Enforcement
@@ -84,6 +94,8 @@ function App() {
             };
 
             await upsertCoupon(newCoupon, fp);
+            await scheduleCouponReminder(newCoupon);
+
             setCoupons((curr) => [newCoupon, ...curr]);
         }
         setView('wallet');
@@ -91,11 +103,24 @@ function App() {
     };
 
     const handleToggleStatus = async (coupon: Coupon) => {
-        const updated: Coupon = { ...coupon, status: coupon.status === 'used' ? 'active' : 'used', updatedAt: Date.now() };
+        const nextStatus = coupon.status === 'used' ? 'active' : 'used';
+        const updated: Coupon = {
+            ...coupon,
+            status: nextStatus,
+            usedAt: nextStatus === 'used' ? new Date().toISOString() : undefined,
+            updatedAt: Date.now()
+        };
         const expiryKey = 'expirationDate' in updated ? (updated as any).expirationDate : updated.expiryDate;
         const fp = await generateFingerprint(updated.store, updated.discountValue || updated.initialValue, updated.code, expiryKey);
 
         await upsertCoupon(updated, fp);
+
+        if (nextStatus === 'used') {
+            await cancelCouponReminder(coupon.id);
+        } else if (nextStatus === 'active') {
+            await scheduleCouponReminder(updated);
+        }
+
         setCoupons((curr) => curr.map((c) => c.id !== coupon.id ? c : updated));
     };
 
