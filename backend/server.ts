@@ -14,6 +14,7 @@ dotenv.config();
 
 const analyticsProvider = process.env.ANALYTICS_PROVIDER || 'console';
 const analyticsEnabled = process.env.ANALYTICS_ENABLED !== 'false';
+const analyticsDebug = process.env.ANALYTICS_DEBUG === 'true';
 const sampleRate = parseFloat(process.env.ANALYTICS_SAMPLE_RATE || '1.0');
 
 let posthog: PostHog | null = null;
@@ -48,17 +49,32 @@ app.post('/ai/extract', async (req, res) => {
     const sessionId = req.header('X-Session-ID') || 'unknown';
     const clientIp = req.ip || req.socket.remoteAddress;
 
+    // Backend Analytics Allowlist
+    const BACKEND_ALLOWLIST: Set<string> = new Set([
+        'sourceLength',
+        'provider',
+        'llm_used',
+        'reason',
+        'success'
+    ]);
+
     // Backend Analytics Logging Helper
     const trackBackendEvent = (eventName: string, payload: Record<string, any> = {}) => {
         if (!analyticsEnabled || Math.random() > sampleRate) return;
 
-        const safePayload = {
+        const safePayload: Record<string, any> = {
             requestId,
             sessionId,
             appVersion: process.env.npm_package_version || '2.0.0',
-            platform: 'backend',
-            ...payload
+            platform: 'backend'
         };
+
+        // Filter through allowlist to drop PII/stack traces
+        for (const [key, value] of Object.entries(payload)) {
+            if (BACKEND_ALLOWLIST.has(key)) {
+                safePayload[key] = value;
+            }
+        }
 
         if (posthog) {
             posthog.capture({
@@ -66,8 +82,13 @@ app.post('/ai/extract', async (req, res) => {
                 event: eventName,
                 properties: safePayload
             });
+            if (analyticsDebug) {
+                console.log(`[ANALYTICS HTTP] -> ${eventName}`, JSON.stringify(safePayload));
+            }
         } else {
-            console.log(`[ANALYTICS] ${eventName}`, JSON.stringify({ timestamp: new Date().toISOString(), ...safePayload }));
+            if (analyticsDebug || !posthog) {
+                console.log(`[ANALYTICS LOCAL] ${eventName}`, JSON.stringify(safePayload));
+            }
         }
     };
 
@@ -128,7 +149,7 @@ app.post('/ai/extract', async (req, res) => {
             res.status(400).json({ error: 'Invalid request', details: error.flatten() });
         } else {
             console.error(`[REQ ${requestId}] Unhandled Server Error:`, error);
-            trackBackendEvent('extract_fail', { reason: 'server_crash', message: (error as Error).message || 'unknown_error' });
+            trackBackendEvent('extract_fail', { reason: 'server_crash' }); // Do NOT send the raw error message string
             res.status(500).json({ error: 'Internal server error' });
         }
     }
