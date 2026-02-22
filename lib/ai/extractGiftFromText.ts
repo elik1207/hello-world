@@ -85,6 +85,7 @@ export function extractGiftFromText(text: string, sourceType: SourceType = 'othe
 
     // 3. Detect Code
     // HEURISTIC: Look for strong contextual keywords like "Code:", "קוד:", "קופון:" followed immediately by alphanumeric strings
+    // TODO: This fails if there are words between the indicator and the code (e.g. "קוד שלך למימוש: X"). Also vulnerability to extracting the word "code" if previous word was "voucher".
     const codeIndicatorRegex = /(?:code|קוד|קופון|מספר שובר|שובר|voucher)[\s:]*([A-Z0-9-]{4,20})/i;
     const codeMatch = text.match(codeIndicatorRegex);
     if (codeMatch && codeMatch[1]) {
@@ -92,6 +93,7 @@ export function extractGiftFromText(text: string, sourceType: SourceType = 'othe
         confidencePoints++;
     } else {
         // ASSUMPTION: Fallback: look for isolated all-caps alphanumeric strings (e.g., A7B-99-XZ) which represent codes 90% of the time
+        // TODO: isolatedCodeRegex is too strict on dash subsets (e.g., requires 4 chars on BOTH sides of the dash, failing ABCD-123). Needs refactoring to `[A-Z0-9-]{5,}` with digit/alpha filters.
         const isolatedCodeRegex = /\b([A-Z0-9]{4,}(?:-[A-Z0-9]{4,})*)\b/g;
         const isolatedMatches = text.match(isolatedCodeRegex);
         if (isolatedMatches) {
