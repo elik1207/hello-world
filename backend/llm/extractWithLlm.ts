@@ -52,7 +52,7 @@ RULES:
 1. ONLY return a raw JSON object. Do not include markdown codeblocks (no \`\`\`json).
 2. Currencies should be ISO codes (e.g. ₪ = "ILS", $ = "USD", € = "EUR"). Default to ILS if none found.
 3. Expiration dates MUST be formatted as ISO 8601 strings (e.g. 2026-12-31T22:00:00.000Z).
-4. If the exact 'Title' of the gift/voucher is not clear from the text, append "title" to the "missingRequiredFields" array.
+4. If any key fields (title, amount, code, expirationDate) cannot be determined, append their keys to the "missingRequiredFields" array.
 5. IF AND ONLY IF "title" is missing, generate exactly ${maxQuestions} question(s) in Hebrew asking the user to provide the title.
    Example: "איך נקרא לשובר או למתנה הזו?"
    Never ask questions for optional fields (like amount, code, or date).

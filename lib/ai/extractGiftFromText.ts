@@ -96,6 +96,12 @@ export function extractGiftFromText(text: string, sourceType: SourceType = 'othe
             draft.code = potentialCode;
             confidencePoints++;
             foundCode = true;
+        } else if (potentialCode.length >= 4) {
+            // Suspicious code (no digits but matched indicator)
+            draft.code = potentialCode;
+            draft.assumptions!.push("Code looks suspicious (no digits), marked for review.");
+            confidencePoints += 0.5;
+            foundCode = true;
         }
     }
 
@@ -116,7 +122,12 @@ export function extractGiftFromText(text: string, sourceType: SourceType = 'othe
             });
             if (validCodes.length > 0) {
                 draft.code = validCodes[0];
-                draft.assumptions!.push(`Found isolated string '${validCodes[0]}', assuming it's the code.`);
+                const isSuspicious = !/\d/.test(validCodes[0]) || validCodes[0].length < 6;
+                if (isSuspicious) {
+                    draft.assumptions!.push(`Found isolated string '${validCodes[0]}', code might be suspicious.`);
+                } else {
+                    draft.assumptions!.push(`Found isolated string '${validCodes[0]}', assuming it's the code.`);
+                }
                 confidencePoints += 0.5;
             }
         }
@@ -164,13 +175,22 @@ export function extractGiftFromText(text: string, sourceType: SourceType = 'othe
     // Wrap Up Title and Missing Fields
     // HEURISTIC: If title (the only strictly required field) is missing, generate exactly ONE question to prompt the user
     if (!draft.title) {
-        // If merchant exists, we used it for title. If not:
         draft.missingRequiredFields!.push('title');
         draft.questions!.push({
             key: 'title',
             questionText: "איך נקרא לשובר או למתנה הזו?",
             inputType: 'text'
         });
+    }
+
+    if (draft.amount === undefined) {
+        draft.missingRequiredFields!.push('amount');
+    }
+    if (!draft.code) {
+        draft.missingRequiredFields!.push('code');
+    }
+    if (!draft.expirationDate) {
+        draft.missingRequiredFields!.push('expirationDate');
     }
 
     // Calculate confidence

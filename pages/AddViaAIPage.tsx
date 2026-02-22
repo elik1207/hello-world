@@ -24,6 +24,7 @@ export function AddViaAIPage({ onSave, onCancel }: AddViaAIPageProps) {
     // Draft State
     const [draft, setDraft] = useState<GiftOrVoucherDraft | null>(null);
     const [clarificationAnswers, setClarificationAnswers] = useState<Record<string, string>>({});
+    const [editedFields, setEditedFields] = useState<Set<string>>(new Set());
 
     // Analytics State
     const [currentRequestId, setCurrentRequestId] = useState<string | null>(null);
@@ -79,11 +80,23 @@ export function AddViaAIPage({ onSave, onCancel }: AddViaAIPageProps) {
             }
 
             setDraft(result);
-            trackEvent('parse_success', { requestId, confidentScore: result.confidence });
 
-            if (result.missingRequiredFields && result.missingRequiredFields.length > 0 && result.questions && result.questions.length > 0) {
+            // Phase 5 Analytics Payload Upgrade for parse_success
+            const isCodeSuspicious = result.assumptions?.some(a => a.toLowerCase().includes('code looks suspicious')) || false;
+
+            trackEvent('parse_success', {
+                requestId,
+                confidentScore: result.confidence,
+                missingFieldCount: result.missingRequiredFields?.length || 0,
+                hasAmount: result.amount !== undefined,
+                hasCode: !!result.code,
+                hasExpiry: !!result.expirationDate,
+                needsReviewFieldCount: result.confidence < 0.6 ? 4 : (isCodeSuspicious ? 1 : 0) // rough heuristic for tracking
+            });
+
+            if (result.missingRequiredFields && result.missingRequiredFields.includes('title') && result.questions && result.questions.length > 0) {
                 setStep('clarify');
-                trackEvent('clarify_shown', { requestId, questionCount: result.questions.length });
+                trackEvent('clarify_shown', { requestId, reason: 'missing_title', questionCount: result.questions.length });
             } else {
                 setStep('preview');
             }
@@ -135,7 +148,10 @@ export function AddViaAIPage({ onSave, onCancel }: AddViaAIPageProps) {
             if (flowStartTime && currentRequestId) {
                 trackEvent('save_success', {
                     requestId: currentRequestId,
-                    time_to_save_ms: Date.now() - flowStartTime
+                    time_to_save_ms: Date.now() - flowStartTime,
+                    missingFieldCountAtSave: draft.missingRequiredFields?.filter(f => !editedFields.has(f)).length || 0,
+                    editedFieldCount: editedFields.size,
+                    needsReviewFieldCountAtSave: (draft.confidence < 0.6 && editedFields.size === 0) ? 1 : 0
                 });
             }
         } catch (saveError: any) {
@@ -289,22 +305,55 @@ export function AddViaAIPage({ onSave, onCancel }: AddViaAIPageProps) {
 
                     {/* Helper to check if an AI assumption directly targets a field */}
                     {(() => {
-                        const isFieldInferred = (keywords: string[]) =>
-                            draft.assumptions?.some(a => keywords.some(k => a.toLowerCase().includes(k))) || draft.confidence < 0.6;
+                        const isFieldMissing = (field: string) => !editedFields.has(field) && draft.missingRequiredFields?.includes(field as any);
+                        const isFieldInferred = (field: string, keywords: string[]) =>
+                            !editedFields.has(field) && (draft.assumptions?.some(a => keywords.some(k => a.toLowerCase().includes(k))) || draft.confidence < 0.6);
+
+                        const renderIndicator = (isMissing: boolean, isInferred: boolean) => {
+                            if (isMissing) {
+                                return (
+                                    <View style={{ backgroundColor: '#7f1d1d', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                        <AlertCircle size={10} color="#fca5a5" />
+                                        <Text style={{ fontSize: 10, color: '#fca5a5', fontWeight: 'bold' }}>חסר</Text>
+                                    </View>
+                                );
+                            }
+                            if (isInferred) {
+                                return (
+                                    <View style={{ backgroundColor: '#92400e', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                        <AlertCircle size={10} color="#fcd34d" />
+                                        <Text style={{ fontSize: 10, color: '#fcd34d', fontWeight: 'bold' }}>לבדיקה</Text>
+                                    </View>
+                                );
+                            }
+                            return null;
+                        };
+
+                        const missingTitle = isFieldMissing('title');
+                        const inferredTitle = isFieldInferred('title', ['title', 'merchant']);
+                        const missingMerchant = isFieldMissing('merchant');
+                        const inferredMerchant = isFieldInferred('merchant', ['merchant']);
+                        const missingAmount = isFieldMissing('amount');
+                        const inferredAmount = isFieldInferred('amount', ['amount', 'currency', 'ils', 'eur', 'usd', 'number']);
+                        const missingDate = isFieldMissing('expirationDate');
+                        const inferredDate = isFieldInferred('expirationDate', ['date', 'format']);
+                        const missingCode = isFieldMissing('code');
+                        const inferredCode = isFieldInferred('code', ['code', 'isolated string', 'suspicious']);
 
                         return (
                             <View style={{ backgroundColor: '#252849', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#3c4270', marginBottom: 16 }}>
                                 {/* Title Row */}
                                 <View style={{ marginBottom: 16 }}>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                                         <Text style={{ fontSize: 12, color: '#a0aed4' }}>Title</Text>
-                                        {isFieldInferred(['title', 'merchant']) && <AlertCircle size={12} color="#f59e0b" />}
+                                        {renderIndicator(missingTitle, inferredTitle)}
                                     </View>
                                     <TextInput
-                                        style={{ color: '#f8fafc', fontSize: 18, fontWeight: '600', backgroundColor: '#1a1d38', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: isFieldInferred(['title', 'merchant']) ? '#92400e' : 'transparent' }}
+                                        style={{ color: '#f8fafc', fontSize: 18, fontWeight: '600', backgroundColor: '#1a1d38', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: missingTitle ? '#f87171' : inferredTitle ? '#92400e' : 'transparent' }}
                                         value={draft.title || ''}
                                         onChangeText={(val) => {
                                             setDraft({ ...draft, title: val });
+                                            setEditedFields(prev => new Set(prev).add('title'));
                                             trackEvent('field_edited', { requestId: currentRequestId || undefined, fieldName: 'title' });
                                         }}
                                     />
@@ -312,15 +361,16 @@ export function AddViaAIPage({ onSave, onCancel }: AddViaAIPageProps) {
 
                                 {/* Store / Merchant */}
                                 <View style={{ marginBottom: 16 }}>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                                         <Text style={{ fontSize: 12, color: '#a0aed4' }}>Merchant / Store</Text>
-                                        {isFieldInferred(['merchant']) && <AlertCircle size={12} color="#f59e0b" />}
+                                        {renderIndicator(missingMerchant, inferredMerchant)}
                                     </View>
                                     <TextInput
-                                        style={{ color: '#f8fafc', fontSize: 16, backgroundColor: '#1a1d38', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: isFieldInferred(['merchant']) ? '#92400e' : 'transparent' }}
+                                        style={{ color: '#f8fafc', fontSize: 16, backgroundColor: '#1a1d38', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: missingMerchant ? '#f87171' : inferredMerchant ? '#92400e' : 'transparent' }}
                                         value={draft.merchant || ''}
                                         onChangeText={(val) => {
                                             setDraft({ ...draft, merchant: val });
+                                            setEditedFields(prev => new Set(prev).add('merchant'));
                                             trackEvent('field_edited', { requestId: currentRequestId || undefined, fieldName: 'merchant' });
                                         }}
                                         placeholder="Unknown Store"
@@ -330,15 +380,16 @@ export function AddViaAIPage({ onSave, onCancel }: AddViaAIPageProps) {
 
                                 <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
                                     <View style={{ flex: 1 }}>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                                             <Text style={{ fontSize: 12, color: '#a0aed4' }}>Amount ({draft.currency || 'ILS'})</Text>
-                                            {isFieldInferred(['amount', 'currency', 'ils', 'eur', 'usd', 'number']) && <AlertCircle size={12} color="#f59e0b" />}
+                                            {renderIndicator(missingAmount, inferredAmount)}
                                         </View>
                                         <TextInput
-                                            style={{ color: '#f8fafc', fontSize: 16, backgroundColor: '#1a1d38', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: isFieldInferred(['amount', 'currency', 'ils', 'eur', 'usd', 'number']) ? '#92400e' : 'transparent' }}
+                                            style={{ color: '#f8fafc', fontSize: 16, backgroundColor: '#1a1d38', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: missingAmount ? '#f87171' : inferredAmount ? '#92400e' : 'transparent' }}
                                             value={draft.amount !== undefined ? draft.amount.toString() : ''}
                                             onChangeText={(val) => {
-                                                setDraft({ ...draft, amount: parseFloat(val) || undefined });
+                                                setDraft({ ...draft, amount: val ? parseFloat(val) : undefined });
+                                                setEditedFields(prev => new Set(prev).add('amount'));
                                                 trackEvent('field_edited', { requestId: currentRequestId || undefined, fieldName: 'amount' });
                                             }}
                                             keyboardType="numeric"
@@ -347,15 +398,16 @@ export function AddViaAIPage({ onSave, onCancel }: AddViaAIPageProps) {
                                         />
                                     </View>
                                     <View style={{ flex: 1 }}>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                                             <Text style={{ fontSize: 12, color: '#a0aed4' }}>Expiry Date</Text>
-                                            {isFieldInferred(['date', 'format']) && <AlertCircle size={12} color="#f59e0b" />}
+                                            {renderIndicator(missingDate, inferredDate)}
                                         </View>
                                         <TextInput
-                                            style={{ color: '#f8fafc', fontSize: 16, backgroundColor: '#1a1d38', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: isFieldInferred(['date', 'format']) ? '#92400e' : 'transparent' }}
+                                            style={{ color: '#f8fafc', fontSize: 16, backgroundColor: '#1a1d38', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: missingDate ? '#f87171' : inferredDate ? '#92400e' : 'transparent' }}
                                             value={draft.expirationDate ? draft.expirationDate.split('T')[0] : ''}
                                             onChangeText={(val) => {
                                                 setDraft({ ...draft, expirationDate: val ? `${val}T00:00:00.000Z` : undefined });
+                                                setEditedFields(prev => new Set(prev).add('expirationDate'));
                                                 trackEvent('field_edited', { requestId: currentRequestId || undefined, fieldName: 'expirationDate' });
                                             }}
                                             placeholder="YYYY-MM-DD"
@@ -365,15 +417,16 @@ export function AddViaAIPage({ onSave, onCancel }: AddViaAIPageProps) {
                                 </View>
 
                                 <View style={{ marginBottom: 16 }}>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                                         <Text style={{ fontSize: 12, color: '#a0aed4' }}>Coupon Code</Text>
-                                        {isFieldInferred(['code', 'isolated string']) && <AlertCircle size={12} color="#f59e0b" />}
+                                        {renderIndicator(missingCode, inferredCode)}
                                     </View>
                                     <TextInput
-                                        style={{ color: '#a78bfa', fontSize: 16, fontWeight: '700', backgroundColor: '#1a1d38', padding: 10, borderRadius: 8, letterSpacing: 1, borderWidth: 1, borderColor: isFieldInferred(['code', 'isolated string']) ? '#92400e' : 'transparent' }}
+                                        style={{ color: '#a78bfa', fontSize: 16, fontWeight: '700', backgroundColor: '#1a1d38', padding: 10, borderRadius: 8, letterSpacing: 1, borderWidth: 1, borderColor: missingCode ? '#f87171' : inferredCode ? '#92400e' : 'transparent' }}
                                         value={draft.code || ''}
                                         onChangeText={(val) => {
                                             setDraft({ ...draft, code: val });
+                                            setEditedFields(prev => new Set(prev).add('code'));
                                             trackEvent('field_edited', { requestId: currentRequestId || undefined, fieldName: 'code' });
                                         }}
                                         placeholder="A1B2-C3D4"
