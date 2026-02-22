@@ -25,15 +25,16 @@ const apiLimiter = rateLimit({
 });
 app.use('/ai/', apiLimiter);
 
-// Zod schema for request validation
+// Schema for validating incoming extraction requests
 const extractRequestSchema = z.object({
-    sourceText: z.string().min(1, 'Source text is required'),
-    sourceType: z.enum(['whatsapp', 'sms', 'manual', 'other']).default('other'),
+    sourceText: z.string().min(1, 'Source text cannot be empty'),
+    sourceType: z.string().optional()
 });
 
 app.post('/ai/extract', async (req, res) => {
+    const requestId = req.header('X-Request-ID') || Math.random().toString(36).substring(7);
+    const clientIp = req.ip || req.socket.remoteAddress;
     // 1. Privacy logging (do not log explicit source texts)
-    const requestId = Math.random().toString(36).substring(7);
     if (process.env.AI_LOG_LEVEL === 'info') {
         console.log(`[REQ ${requestId}] Extracting text (length: ${req.body.sourceText?.length}) via ${process.env.AI_PROVIDER || 'deterministic'}`);
     }

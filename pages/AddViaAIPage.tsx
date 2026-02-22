@@ -39,9 +39,14 @@ export function AddViaAIPage({ onSave, onCancel }: AddViaAIPageProps) {
             if (process.env.EXPO_PUBLIC_AI_MODE === 'backend') {
                 // Route through the new hybrid fastify/express backend
                 const backendUrl = process.env.EXPO_PUBLIC_AI_BACKEND_URL || 'http://localhost:3000';
+                const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
                 const response = await fetch(`${backendUrl}/ai/extract`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Request-ID': requestId
+                    },
                     body: JSON.stringify({ sourceText: rawText, sourceType })
                 });
 
@@ -234,64 +239,87 @@ export function AddViaAIPage({ onSave, onCancel }: AddViaAIPageProps) {
                         </Text>
                     </View>
 
-                    <View style={{ backgroundColor: '#252849', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#3c4270', marginBottom: 16 }}>
-                        {/* Title Row */}
-                        <View style={{ marginBottom: 16 }}>
-                            <Text style={{ fontSize: 12, color: '#a0aed4', marginBottom: 4 }}>Title</Text>
-                            <TextInput
-                                style={{ color: '#f8fafc', fontSize: 18, fontWeight: '600', backgroundColor: '#1a1d38', padding: 10, borderRadius: 8 }}
-                                value={draft.title || ''}
-                                onChangeText={(val) => setDraft({ ...draft, title: val })}
-                            />
-                        </View>
+                    {/* Helper to check if an AI assumption directly targets a field */}
+                    {(() => {
+                        const isFieldInferred = (keywords: string[]) =>
+                            draft.assumptions?.some(a => keywords.some(k => a.toLowerCase().includes(k))) || draft.confidence < 0.6;
 
-                        {/* Store / Merchant */}
-                        <View style={{ marginBottom: 16 }}>
-                            <Text style={{ fontSize: 12, color: '#a0aed4', marginBottom: 4 }}>Merchant / Store</Text>
-                            <TextInput
-                                style={{ color: '#f8fafc', fontSize: 16, backgroundColor: '#1a1d38', padding: 10, borderRadius: 8 }}
-                                value={draft.merchant || ''}
-                                onChangeText={(val) => setDraft({ ...draft, merchant: val })}
-                                placeholder="Unknown Store"
-                                placeholderTextColor="#64748b"
-                            />
-                        </View>
+                        return (
+                            <View style={{ backgroundColor: '#252849', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#3c4270', marginBottom: 16 }}>
+                                {/* Title Row */}
+                                <View style={{ marginBottom: 16 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                                        <Text style={{ fontSize: 12, color: '#a0aed4' }}>Title</Text>
+                                        {isFieldInferred(['title', 'merchant']) && <AlertCircle size={12} color="#f59e0b" />}
+                                    </View>
+                                    <TextInput
+                                        style={{ color: '#f8fafc', fontSize: 18, fontWeight: '600', backgroundColor: '#1a1d38', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: isFieldInferred(['title', 'merchant']) ? '#92400e' : 'transparent' }}
+                                        value={draft.title || ''}
+                                        onChangeText={(val) => setDraft({ ...draft, title: val })}
+                                    />
+                                </View>
 
-                        <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
-                            <View style={{ flex: 1 }}>
-                                <Text style={{ fontSize: 12, color: '#a0aed4', marginBottom: 4 }}>Amount ({draft.currency || 'ILS'})</Text>
-                                <TextInput
-                                    style={{ color: '#f8fafc', fontSize: 16, backgroundColor: '#1a1d38', padding: 10, borderRadius: 8 }}
-                                    value={draft.amount !== undefined ? draft.amount.toString() : ''}
-                                    onChangeText={(val) => setDraft({ ...draft, amount: parseFloat(val) || undefined })}
-                                    keyboardType="numeric"
-                                    placeholder="0"
-                                    placeholderTextColor="#64748b"
-                                />
+                                {/* Store / Merchant */}
+                                <View style={{ marginBottom: 16 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                                        <Text style={{ fontSize: 12, color: '#a0aed4' }}>Merchant / Store</Text>
+                                        {isFieldInferred(['merchant']) && <AlertCircle size={12} color="#f59e0b" />}
+                                    </View>
+                                    <TextInput
+                                        style={{ color: '#f8fafc', fontSize: 16, backgroundColor: '#1a1d38', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: isFieldInferred(['merchant']) ? '#92400e' : 'transparent' }}
+                                        value={draft.merchant || ''}
+                                        onChangeText={(val) => setDraft({ ...draft, merchant: val })}
+                                        placeholder="Unknown Store"
+                                        placeholderTextColor="#64748b"
+                                    />
+                                </View>
+
+                                <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
+                                    <View style={{ flex: 1 }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                                            <Text style={{ fontSize: 12, color: '#a0aed4' }}>Amount ({draft.currency || 'ILS'})</Text>
+                                            {isFieldInferred(['amount', 'currency', 'ils', 'eur', 'usd', 'number']) && <AlertCircle size={12} color="#f59e0b" />}
+                                        </View>
+                                        <TextInput
+                                            style={{ color: '#f8fafc', fontSize: 16, backgroundColor: '#1a1d38', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: isFieldInferred(['amount', 'currency', 'ils', 'eur', 'usd', 'number']) ? '#92400e' : 'transparent' }}
+                                            value={draft.amount !== undefined ? draft.amount.toString() : ''}
+                                            onChangeText={(val) => setDraft({ ...draft, amount: parseFloat(val) || undefined })}
+                                            keyboardType="numeric"
+                                            placeholder="0"
+                                            placeholderTextColor="#64748b"
+                                        />
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                                            <Text style={{ fontSize: 12, color: '#a0aed4' }}>Expiry Date</Text>
+                                            {isFieldInferred(['date', 'format']) && <AlertCircle size={12} color="#f59e0b" />}
+                                        </View>
+                                        <TextInput
+                                            style={{ color: '#f8fafc', fontSize: 16, backgroundColor: '#1a1d38', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: isFieldInferred(['date', 'format']) ? '#92400e' : 'transparent' }}
+                                            value={draft.expirationDate ? draft.expirationDate.split('T')[0] : ''}
+                                            onChangeText={(val) => setDraft({ ...draft, expirationDate: val ? `${val}T00:00:00.000Z` : undefined })}
+                                            placeholder="YYYY-MM-DD"
+                                            placeholderTextColor="#64748b"
+                                        />
+                                    </View>
+                                </View>
+
+                                <View style={{ marginBottom: 16 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                                        <Text style={{ fontSize: 12, color: '#a0aed4' }}>Coupon Code</Text>
+                                        {isFieldInferred(['code', 'isolated string']) && <AlertCircle size={12} color="#f59e0b" />}
+                                    </View>
+                                    <TextInput
+                                        style={{ color: '#a78bfa', fontSize: 16, fontWeight: '700', backgroundColor: '#1a1d38', padding: 10, borderRadius: 8, letterSpacing: 1, borderWidth: 1, borderColor: isFieldInferred(['code', 'isolated string']) ? '#92400e' : 'transparent' }}
+                                        value={draft.code || ''}
+                                        onChangeText={(val) => setDraft({ ...draft, code: val })}
+                                        placeholder="A1B2-C3D4"
+                                        placeholderTextColor="#64748b"
+                                    />
+                                </View>
                             </View>
-                            <View style={{ flex: 1 }}>
-                                <Text style={{ fontSize: 12, color: '#a0aed4', marginBottom: 4 }}>Expiry Date</Text>
-                                <TextInput
-                                    style={{ color: '#f8fafc', fontSize: 16, backgroundColor: '#1a1d38', padding: 10, borderRadius: 8 }}
-                                    value={draft.expirationDate ? draft.expirationDate.split('T')[0] : ''}
-                                    onChangeText={(val) => setDraft({ ...draft, expirationDate: val ? `${val}T00:00:00.000Z` : undefined })}
-                                    placeholder="YYYY-MM-DD"
-                                    placeholderTextColor="#64748b"
-                                />
-                            </View>
-                        </View>
-
-                        <View style={{ marginBottom: 16 }}>
-                            <Text style={{ fontSize: 12, color: '#a0aed4', marginBottom: 4 }}>Coupon Code</Text>
-                            <TextInput
-                                style={{ color: '#a78bfa', fontSize: 16, fontWeight: '700', backgroundColor: '#1a1d38', padding: 10, borderRadius: 8, letterSpacing: 1 }}
-                                value={draft.code || ''}
-                                onChangeText={(val) => setDraft({ ...draft, code: val })}
-                                placeholder="A1B2-C3D4"
-                                placeholderTextColor="#64748b"
-                            />
-                        </View>
-                    </View>
+                        );
+                    })()}
 
                     {draft.assumptions && draft.assumptions.length > 0 && (
                         <View style={{ backgroundColor: '#27305a', padding: 12, borderRadius: 12, marginBottom: 24, borderWidth: 1, borderColor: '#3c4270' }}>
