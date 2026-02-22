@@ -31,3 +31,27 @@ export interface WalletData {
     version: number;
     items: Coupon[];
 }
+
+export type SourceType = 'whatsapp' | 'sms' | 'manual' | 'other';
+
+export interface ClarificationQuestion {
+    key: keyof GiftOrVoucherDraft;
+    questionText: string;
+    inputType: 'text' | 'number' | 'date';
+}
+
+export interface GiftOrVoucherDraft {
+    title?: string; // Optional during draft, required for final
+    merchant?: string;
+    amount?: number;
+    currency?: string;
+    code?: string;
+    expirationDate?: string; // ISO string
+    sourceType: SourceType;
+    sourceText: string;
+    notes?: string;
+    confidence: number; // 0..1
+    assumptions: string[];
+    missingRequiredFields: (keyof GiftOrVoucherDraft)[];
+    questions: ClarificationQuestion[];
+}

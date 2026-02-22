@@ -8,11 +8,12 @@ import { BottomNav } from './components/BottomNav';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { WalletPage } from './pages/WalletPage';
 import { AddEditPage } from './pages/AddEditPage';
+import { AddViaAIPage } from './pages/AddViaAIPage';
 import { SettingsPage } from './pages/SettingsPage';
 
 import './global-css';
 
-type AppView = 'wallet' | 'add' | 'settings';
+type AppView = 'wallet' | 'add' | 'add-ai' | 'settings';
 
 export default function App() {
     const [coupons, setCoupons] = useState<Coupon[]>([]);
@@ -104,6 +105,12 @@ export default function App() {
             {view === 'add' && (
                 <AddEditPage
                     initialData={editingCoupon}
+                    onSave={handleSave}
+                    onCancel={() => setView('wallet')}
+                />
+            )}
+            {view === 'add-ai' && (
+                <AddViaAIPage
                     onSave={handleSave}
                     onCancel={() => setView('wallet')}
                 />

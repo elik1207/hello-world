@@ -7,10 +7,10 @@ import Animated, {
 } from 'react-native-reanimated';
 import { View, Text, Pressable } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { Wallet, PlusCircle, Settings } from 'lucide-react-native';
+import { Wallet, PlusCircle, Settings, Sparkles } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
-type NavView = 'wallet' | 'add' | 'settings';
+type NavView = 'wallet' | 'add' | 'add-ai' | 'settings';
 
 interface BottomNavProps {
     currentView: NavView;
@@ -19,7 +19,8 @@ interface BottomNavProps {
 
 const TABS: { id: NavView; label: string; Icon: typeof Wallet }[] = [
     { id: 'wallet', label: 'Wallet', Icon: Wallet },
-    { id: 'add', label: 'Add', Icon: PlusCircle },
+    { id: 'add', label: 'Manual', Icon: PlusCircle },
+    { id: 'add-ai', label: 'AI Paste', Icon: Sparkles },
     { id: 'settings', label: 'Settings', Icon: Settings },
 ];
 

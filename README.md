@@ -50,6 +50,33 @@ Then:
 - Press **`w`** to open in web browser
 - Scan the **QR code** with Expo Go to open on your phone (Android/iOS)
 
+### Hybrid AI Backend (Optional, Phase 4 & 5)
+The application includes a centralized deterministic AI extraction pipeline that can run identically on the client (offline) or natively on a Node.js server. **The server also supports an optional OpenAI fallback** that respects all deterministic rules and schemas while catching complex edge-cases.
+
+#### 1. Start the Backend Server
+```bash
+cd backend
+npm install
+# Copy the environment file and configure (e.g. inject AI_API_KEY if testing LLM mode)
+cp .env.example .env
+npm run dev
+```
+
+> **Developer Note (Physical Devices):**
+> If you are testing the Expo app on a physical device (via Expo Go) rather than a desktop simulator, `http://localhost:3000` will not resolve. You must replace `localhost` in `EXPO_PUBLIC_AI_BACKEND_URL` with your computer's local Wi-Fi IP address (e.g., `http://192.168.1.15:3000`) or use a tunneling service.
+
+> **Note on Providers (`backend/.env`):**
+> - `AI_PROVIDER=deterministic` (Default): Runs regex exactly like the offline client.
+> - `AI_PROVIDER=llm`: Routes the request cleanly through OpenAI using native JSON schema constraints. If the prompt fails, times out, or hallucinates, the server gracefully swallows the exact request backward into the deterministic parser.
+
+#### 2. Configure the Frontend Switch
+In the root directory of the Expo project, alter your `.env` (based on `.env.example`):
+```env
+EXPO_PUBLIC_AI_MODE=backend
+EXPO_PUBLIC_AI_BACKEND_URL=http://localhost:3000
+```
+Restart the Expo app. The "Add via AI" tab will now sequentially route texts to the backend! Switch `EXPO_PUBLIC_AI_MODE=offline` to cleanly sever the network dependency.
+
 ---
 
 ## Project Structure
