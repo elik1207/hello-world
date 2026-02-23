@@ -3,7 +3,6 @@ import { View, Alert, AppState } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as Linking from 'expo-linking';
 import * as Clipboard from 'expo-clipboard';
-import { Platform, NativeModules } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Coupon } from './lib/types';
 import { initDb, getCoupons, upsertCoupon, deleteCoupon, clearDb, isDuplicateFingerprint } from './lib/db';
@@ -14,6 +13,7 @@ import { scheduleCouponReminder, cancelCouponReminder } from './lib/reminders';
 import { normalizeIncomingText, classifyIntake, getSafeAnalyticsMeta } from './lib/intake';
 import { trackEvent } from './lib/analytics';
 import { stableDigest } from './lib/hash';
+import { getSharedText, clearSharedText, addShareIntentListener } from './modules/share-intent';
 import { BottomNav } from './components/BottomNav';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { WalletPage } from './pages/WalletPage';
@@ -107,14 +107,29 @@ function App() {
                 handleIncomingUrl(event.url);
             });
 
-            // Android share intent: check if app was opened via ACTION_SEND
-            if (INTAKE_SHARE && Platform.OS === 'android') {
-                const ShareMenu = NativeModules.ShareMenu;
-                if (ShareMenu?.getSharedText) {
-                    ShareMenu.getSharedText((text: string | null) => {
-                        if (text) handleSharedText(text);
-                    });
-                }
+            // Android share intent (cold start): read text from native buffer
+            if (INTAKE_SHARE) {
+                getSharedText().then(text => {
+                    if (text) {
+                        handleSharedText(text);
+                        clearSharedText();
+                    }
+                }).catch(e => {
+                    if (__DEV__) console.warn('[ShareIntent] bridge unavailable:', e);
+                });
+
+                // Warm start: listen for new share events while app is running
+                const unsub = addShareIntentListener((event) => {
+                    if (event.text) {
+                        handleSharedText(event.text);
+                        clearSharedText();
+                    }
+                });
+
+                return () => {
+                    sub.remove();
+                    unsub();
+                };
             }
 
             return () => sub.remove();
