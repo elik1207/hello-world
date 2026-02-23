@@ -5,6 +5,9 @@
     "android": {
         "modules": [
             "com.couponwallet.shareintent.ShareIntentModule"
+        ],
+        "packages": [
+            "com.couponwallet.shareintent.ShareIntentPackage"
         ]
     }
 }

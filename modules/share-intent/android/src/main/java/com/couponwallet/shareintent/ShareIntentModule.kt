@@ -1,76 +1,78 @@
 package com.couponwallet.shareintent
 
-import android.app.Activity
-import android.content.Intent
-import android.os.Bundle
+import androidx.core.os.bundleOf
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
-import expo.modules.core.interfaces.ActivityEventListener
+import java.lang.ref.WeakReference
 
-class ShareIntentModule : Module(), ActivityEventListener {
-    // Buffer holds the most recently received shared text.
-    // Cleared after JS reads it to prevent re-processing.
-    private var pendingSharedText: String? = null
+/**
+ * Expo Module that exposes share intent data to JavaScript.
+ * 
+ * The lifecycle listener (ShareIntentReactActivityLifecycleListener) captures
+ * the shared text and stores it in the companion object. This module provides
+ * JS-callable functions to read and clear that buffer, plus an event for
+ * warm-start notifications.
+ * 
+ * Architecture:
+ *   ReactActivity → onNewIntent/onCreate → ShareIntentReactActivityLifecycleListener
+ *   → companion object (pendingText) → ShareIntentModule → JS
+ */
+class ShareIntentModule : Module() {
+
+    companion object {
+        // Shared buffer: written by the lifecycle listener, read by the module.
+        @Volatile
+        var pendingText: String? = null
+
+        // Observers: modules register to be notified when new share text arrives.
+        val observers: MutableSet<WeakReference<ShareIntentModule>> = mutableSetOf()
+
+        fun notifyNewShare() {
+            val text = pendingText ?: return
+            observers.forEach { ref ->
+                ref.get()?.sendEvent("onShareIntent", bundleOf("text" to text))
+            }
+        }
+    }
 
     override fun definition() = ModuleDefinition {
         Name("ShareIntent")
 
-        // Read the initial intent on module creation (cold start).
-        OnCreate {
-            readIntentText(appContext.currentActivity?.intent)
-        }
-
-        // Also read on activity creation in case OnCreate ran before the activity existed.
-        OnActivityCreated { activity: Activity, _: Bundle? ->
-            readIntentText(activity.intent)
-        }
-
-        // Handle warm-start shares: singleTask launchMode routes here via onNewIntent.
-        OnNewIntent { intent ->
-            readIntentText(intent)
-            if (pendingSharedText != null) {
-                sendEvent("onShareIntent", mapOf("text" to pendingSharedText))
-            }
-        }
+        Events("onShareIntent")
 
         // JS-callable: returns the pending shared text (or null).
         AsyncFunction("getSharedText") {
-            return@AsyncFunction pendingSharedText
+            return@AsyncFunction pendingText
         }
 
-        // JS-callable: clears the buffer so we don't re-process the same text.
+        // JS-callable: clears the buffer to prevent re-processing.
         Function("clearSharedText") {
-            pendingSharedText = null
+            pendingText = null
         }
 
-        // Event that JS can subscribe to for warm-start share events.
-        Events("onShareIntent")
-    }
-
-    /**
-     * Extracts EXTRA_TEXT from an ACTION_SEND intent.
-     * Only processes text/plain MIME type.
-     */
-    private fun readIntentText(intent: Intent?) {
-        if (intent == null) return
-        if (intent.action != Intent.ACTION_SEND) return
-        if (intent.type?.startsWith("text/") != true) return
-
-        val text = intent.getStringExtra(Intent.EXTRA_TEXT)
-        if (!text.isNullOrBlank()) {
-            pendingSharedText = text
+        // Register this module instance as an observer for warm-start events.
+        OnStartObserving("onShareIntent") {
+            observers.add(WeakReference(this@ShareIntentModule))
         }
-    }
 
-    // ActivityEventListener fallback for additional intent delivery paths
-    override fun onNewIntent(intent: Intent?) {
-        readIntentText(intent)
-        if (pendingSharedText != null) {
-            sendEvent("onShareIntent", mapOf("text" to pendingSharedText))
+        OnStopObserving("onShareIntent") {
+            observers.removeAll { it.get() == null || it.get() == this@ShareIntentModule }
         }
-    }
 
-    override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
-        // Not needed for share intake
+        // On module creation, also try to read the current activity's intent
+        // in case the lifecycle listener hasn't fired yet.
+        OnCreate {
+            observers.add(WeakReference(this@ShareIntentModule))
+            val intent = appContext.currentActivity?.intent
+            if (intent != null && pendingText == null) {
+                if (intent.action == android.content.Intent.ACTION_SEND &&
+                    intent.type?.startsWith("text/") == true) {
+                    val text = intent.getStringExtra(android.content.Intent.EXTRA_TEXT)
+                    if (!text.isNullOrBlank()) {
+                        pendingText = text
+                    }
+                }
+            }
+        }
     }
 }
