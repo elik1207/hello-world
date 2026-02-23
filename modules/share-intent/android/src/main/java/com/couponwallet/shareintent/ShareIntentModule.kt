@@ -1,10 +1,13 @@
 package com.couponwallet.shareintent
 
+import android.app.Activity
 import android.content.Intent
+import android.os.Bundle
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import expo.modules.core.interfaces.ActivityEventListener
 
-class ShareIntentModule : Module() {
+class ShareIntentModule : Module(), ActivityEventListener {
     // Buffer holds the most recently received shared text.
     // Cleared after JS reads it to prevent re-processing.
     private var pendingSharedText: String? = null
@@ -12,16 +15,19 @@ class ShareIntentModule : Module() {
     override fun definition() = ModuleDefinition {
         Name("ShareIntent")
 
-        // Called once when the module is created.
-        // Reads the initial intent if the app was cold-started via share.
+        // Read the initial intent on module creation (cold start).
         OnCreate {
             readIntentText(appContext.currentActivity?.intent)
         }
 
-        // Called when a new intent arrives while the app is already running (warm start).
+        // Also read on activity creation in case OnCreate ran before the activity existed.
+        OnActivityCreated { activity: Activity, _: Bundle? ->
+            readIntentText(activity.intent)
+        }
+
+        // Handle warm-start shares: singleTask launchMode routes here via onNewIntent.
         OnNewIntent { intent ->
             readIntentText(intent)
-            // Emit event to JS so the listener can pick it up.
             if (pendingSharedText != null) {
                 sendEvent("onShareIntent", mapOf("text" to pendingSharedText))
             }
@@ -48,11 +54,23 @@ class ShareIntentModule : Module() {
     private fun readIntentText(intent: Intent?) {
         if (intent == null) return
         if (intent.action != Intent.ACTION_SEND) return
-        if (intent.type != "text/plain") return
+        if (intent.type?.startsWith("text/") != true) return
 
         val text = intent.getStringExtra(Intent.EXTRA_TEXT)
         if (!text.isNullOrBlank()) {
             pendingSharedText = text
         }
+    }
+
+    // ActivityEventListener fallback for additional intent delivery paths
+    override fun onNewIntent(intent: Intent?) {
+        readIntentText(intent)
+        if (pendingSharedText != null) {
+            sendEvent("onShareIntent", mapOf("text" to pendingSharedText))
+        }
+    }
+
+    override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
+        // Not needed for share intake
     }
 }

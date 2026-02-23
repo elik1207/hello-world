@@ -1,11 +1,10 @@
 /**
  * plugins/withAndroidShareIntent.js
  * 
- * Expo config plugin that adds an intent-filter for ACTION_SEND (text/plain)
- * to the main Android activity, enabling the app to appear in the OS share sheet.
- * 
- * Usage: add to app.json plugins array:
- *   ["./plugins/withAndroidShareIntent"]
+ * Expo config plugin that:
+ * 1. Adds ACTION_SEND text/plain intent-filter to the main Activity
+ * 2. Sets android:launchMode="singleTask" so warm-start shares trigger onNewIntent
+ *    instead of creating a duplicate Activity
  */
 const { withAndroidManifest } = require('@expo/config-plugins');
 
@@ -14,7 +13,10 @@ function withAndroidShareIntent(config) {
         const manifest = config.modResults;
         const mainActivity = manifest.manifest.application[0].activity[0];
 
-        // Check if share intent-filter already exists
+        // 1. Set launchMode to singleTask for warm-start share intent delivery
+        mainActivity.$['android:launchMode'] = 'singleTask';
+
+        // 2. Add share intent-filter if not present
         const intentFilters = mainActivity['intent-filter'] || [];
         const hasShareFilter = intentFilters.some(f => {
             const actions = f.action || [];

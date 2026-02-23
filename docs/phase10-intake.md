@@ -4,8 +4,8 @@
 
 ### 1. Deep Link (`couponwallet://intake?text=...`)
 - **Flag**: `EXPO_PUBLIC_FEATURE_INTAKE_DEEPLINK=true`
-- URL scheme: `couponwallet://` (registered in `app.json` → `scheme`)
-- Path: `/intake` with query param `text` (URL-encoded)
+- URL scheme: `couponwallet://` (registered in `app.json` → `"scheme"`)
+- Path: `/intake`, query param: `text` (URL-encoded)
 - Works on cold start and warm start
 
 **Example:**
@@ -18,93 +18,113 @@ couponwallet://intake?text=%D7%A9%D7%95%D7%91%D7%A8%20100%20%E2%82%AA
 
 | Platform | Status | Details |
 |----------|--------|---------|
-| **Android** | ✅ Supported | Native Expo module reads `ACTION_SEND` `EXTRA_TEXT`. App appears in share sheet. Shared text routes to AI extraction. |
-| **iOS** | ⚠️ Not supported | Requires native share extension not feasible in managed Expo. Use deeplink or clipboard instead. |
+| **Android** | ✅ Supported | Native Expo module reads `EXTRA_TEXT`. Requires Dev Client (not Expo Go). |
+| **iOS** | ⚠️ Not supported | Requires native Share Extension. Use deeplink + clipboard. |
 
-**Android implementation details:**
-- **Native module**: `modules/share-intent/` — local Expo module with Kotlin code
-  - `ShareIntentModule.kt`: reads `Intent.EXTRA_TEXT`, handles cold start (`OnCreate`) and warm start (`OnNewIntent`)
-  - Exposes `getSharedText()`, `clearSharedText()`, and `onShareIntent` event to JS
-- **Config plugin**: `plugins/withAndroidShareIntent.js` — adds `ACTION_SEND text/plain` intent-filter
-- **JS interface**: `modules/share-intent/index.ts` — typed exports with safe no-ops on non-Android
+**How it works (Android):**
 
-**Setup (requires Dev Client / prebuild):**
+```
+WhatsApp/SMS → "Share" → App opens → ShareIntentModule reads EXTRA_TEXT
+→ JS getSharedText() → normalizeIncomingText → AI extraction prefilled
+→ clearSharedText() (prevent re-processing)
+```
+
+**Architecture:**
+
+| Layer | File | Role |
+|-------|------|------|
+| Config plugin | `plugins/withAndroidShareIntent.js` | Adds `ACTION_SEND text/plain` intent-filter + `singleTask` launchMode |
+| Native module | `modules/share-intent/.../ShareIntentModule.kt` | Reads intent, buffers text, emits events |
+| JS interface | `modules/share-intent/index.ts` | `getSharedText()`, `clearSharedText()`, `addShareIntentListener()` |
+| App routing | `App.tsx` | Calls bridge on cold/warm start, routes to AI flow |
+
+**Setup (requires Dev Client):**
 ```bash
-# 1. Prebuild to apply config plugin + native module
+# 1. Prebuild to generate native projects
 npx expo prebuild --clean
 
-# 2. Build a dev client (Android)
+# 2. Build and run on Android
 npx expo run:android
 
 # 3. Enable the feature flag
 echo 'EXPO_PUBLIC_FEATURE_INTAKE_SHARE=true' >> .env.local
 ```
 
-**iOS — what would be needed:**
+**Cold start vs warm start:**
+- **Cold start**: App was not running. `OnCreate` + `OnActivityCreated` read the initial intent. JS calls `getSharedText()` on mount.
+- **Warm start**: App already running. `singleTask` launchMode causes `onNewIntent` instead of new Activity. Module emits `onShareIntent` event. JS listener picks it up.
+
+**iOS — what's needed for full share support:**
 1. Custom dev client or bare workflow
-2. Native iOS Share Extension target in Xcode
-3. App Group shared container for data transfer
-4. Read shared text from container on app launch
+2. iOS Share Extension target in Xcode
+3. App Group shared container for passing text
+4. Read from container on app launch
 
 ### 3. Clipboard Suggestion
 - **Flag**: `EXPO_PUBLIC_FEATURE_INTAKE_CLIPBOARD=true`
-- **Also requires**: User opt-in in Settings → "Clipboard Suggestions" (default OFF)
-- Checks clipboard on app foreground for voucher-like content
-- Throttled to once per 5 minutes; deduped by SHA-256 digest
-- **No text content is ever persisted** — only `@intake_clipboard_digest` (SHA-256 hex) and `@intake_clipboard_lastPromptAt` (timestamp)
+- **Also requires**: Settings → "Clipboard Suggestions" toggle (default OFF)
+- Checks clipboard on app foreground, shows prompt for voucher-like content
+- Throttled (5 min), deduped by SHA-256 digest (no text persisted)
 
 ## Privacy Guarantees
 - **No raw text in analytics** — only: `source`, `lengthBucket`, `hasAmountHint`, `hasDateHint`, `hasKeywordHint`
-- **No voucher codes, vendor names, or PII** in any event payload
-- **No shared/clipboard text persisted** to AsyncStorage, logs, or Sentry
-- **Clipboard dedup**: SHA-256 digest only (via `expo-crypto`)
-- **Share buffer**: cleared immediately after routing to intake pipeline (`clearSharedText()`)
+- **No shared text persisted** — native buffer cleared after routing (`clearSharedText()`)
+- **No clipboard text stored** — only SHA-256 digest for dedup
+- **Allowlist enforced** in `lib/analyticsProvider.ts`
 
 ## Feature Flags
-All default to `false`. Set in `.env` or `.env.local`:
+All default `false`. Set in `.env` / `.env.local`:
 ```
 EXPO_PUBLIC_FEATURE_INTAKE_DEEPLINK=true
 EXPO_PUBLIC_FEATURE_INTAKE_SHARE=true
 EXPO_PUBLIC_FEATURE_INTAKE_CLIPBOARD=true
 ```
-With all flags OFF → zero behavior change.
+**With all flags OFF → zero behavior change.**
 
 ## Manual QA Checklist
 
 ### Deep Link
-- [ ] `couponwallet://intake?text=שובר%20100%20₪` opens AI flow prefilled (cold + warm start)
-- [ ] Empty/missing text param → no action
-- [ ] Analytics `intake_opened` has `source: "deeplink"` + safe meta only
+- [ ] `couponwallet://intake?text=...` opens AI flow prefilled (cold + warm)
+- [ ] Empty text param → no action
+- [ ] Analytics: `intake_opened` with `source: "deeplink"` + safe meta
 
-### Share (Android)
-- [ ] After `npx expo prebuild` + `npx expo run:android`
-- [ ] Share text from WhatsApp → app opens → AI flow with prefilled text
-- [ ] Share text from SMS → same behavior
-- [ ] Share while app is running (warm start) → AI flow opens with new text
-- [ ] After routing, `clearSharedText()` prevents re-processing
-- [ ] Analytics `intake_opened` has `source: "share"` + safe meta only
-- [ ] No shared text in AsyncStorage, logs, or analytics
+### Share (Android — requires Dev Client)
+- [ ] `npx expo prebuild --clean && npx expo run:android`
+- [ ] Share from WhatsApp → app opens → AI flow with prefilled text
+- [ ] Share from SMS → same
+- [ ] Share while app running (warm start) → AI flow with new text
+- [ ] After routing, re-opening app does NOT re-show old share text
+- [ ] Analytics: `intake_opened` with `source: "share"` + safe meta
+- [ ] No shared text in AsyncStorage, logs, Sentry
 
 ### Clipboard
 - [ ] Toggle OFF by default in Settings
-- [ ] Toggle ON → copy voucher text → open app → Hebrew prompt
+- [ ] Toggle ON → copy voucher → open app → Hebrew prompt
 - [ ] Non-voucher text → no prompt
-- [ ] Same text → no re-prompt (digest dedup)
-- [ ] Respects 5-minute throttle
-- [ ] "כן" → AI flow prefilled; "לא עכשיו" → dismiss
-- [ ] `@intake_clipboard_digest` contains only hex hash (inspect via debug tools)
+- [ ] Same text → no re-prompt (SHA-256 dedup)
+- [ ] 5-minute throttle respected
+- [ ] `@intake_clipboard_digest` contains only hex hash
 
-### Flags OFF → No Changes
-- [ ] All 3 flags OFF → no intake, no clipboard reads, no share handling, no listeners
+### Flags OFF
+- [ ] All 3 flags OFF → no intake behavior, no listeners, no clipboard reads
 
 ### Regression
-- [ ] Manual add / AI paste / edit all work
-- [ ] Reminders schedule/cancel correctly
+- [ ] Manual add / AI paste / edit unchanged
+- [ ] Reminders, tags, saved views, bulk actions unchanged
 - [ ] Export/Import unchanged
-- [ ] Bulk actions + tags + saved views unchanged
 
-## Known Limitations
-1. **Android share requires Dev Client**: `npx expo prebuild` + `npx expo run:android` (not Expo Go)
-2. **iOS share not supported**: No native share extension in managed Expo
-3. **expo-clipboard**: Requires `npx expo install expo-clipboard` (may need Dev Client on iOS)
-4. **Web**: All intake features are no-ops on web platform
+## Troubleshooting
+
+**App opens but AI flow doesn't show prefilled text?**
+1. Verify `EXPO_PUBLIC_FEATURE_INTAKE_SHARE=true` in `.env.local`
+2. Verify running a Dev Client build (not Expo Go)
+3. After `npx expo prebuild`, check `android/app/src/main/AndroidManifest.xml`:
+   - Main activity has `android:launchMode="singleTask"`
+   - Intent-filter with `android.intent.action.SEND` + `text/plain` exists
+4. Check Metro console for `[ShareIntent] bridge unavailable` warnings
+
+**Warm-start share doesn't work?**
+- Ensure `android:launchMode="singleTask"` is set. Without it, Android creates a new Activity and `onNewIntent` never fires.
+
+**Module not found?**
+- Run `npx expo prebuild --clean` to regenerate native projects with the local module linked.

@@ -1,31 +1,38 @@
 /**
  * modules/share-intent/index.ts
  * 
- * JS interface for the ShareIntent native module.
- * Provides typed access to Android share text reception.
- * On non-Android platforms, all methods are safe no-ops.
+ * JS interface for the ShareIntent native module (Android only).
+ * On non-Android platforms, all methods are safe no-ops that return null/void.
+ * 
+ * The native module (ShareIntentModule.kt) reads ACTION_SEND EXTRA_TEXT from
+ * the Android intent on both cold and warm starts.
  */
 import { Platform } from 'react-native';
 
-// Dynamically require the native module only on Android to avoid crashes
+// Dynamically require the native module only on Android.
+// Use try/catch to handle cases where the module isn't built (e.g., Expo Go).
 let ShareIntentNative: any = null;
-try {
-    if (Platform.OS === 'android') {
-        const { NativeModulesProxy } = require('expo-modules-core');
-        ShareIntentNative = NativeModulesProxy.ShareIntent ?? null;
+if (Platform.OS === 'android') {
+    try {
+        const ExpoModulesCore = require('expo-modules-core');
+        ShareIntentNative = ExpoModulesCore.NativeModulesProxy?.ShareIntent ?? null;
+    } catch {
+        // Module not linked — running in Expo Go or web
     }
-} catch {
-    // Module not available — running in web or iOS
 }
 
 /**
  * Get the shared text from the intent that opened the app (cold start).
- * Returns null if the app was not opened via a share intent.
+ * Returns null if:
+ * - Not on Android
+ * - Module not linked (e.g., Expo Go)
+ * - App was not opened via a share intent
  */
 export async function getSharedText(): Promise<string | null> {
     if (!ShareIntentNative) return null;
     try {
-        return await ShareIntentNative.getSharedText();
+        const text = await ShareIntentNative.getSharedText();
+        return typeof text === 'string' ? text : null;
     } catch {
         return null;
     }
@@ -33,32 +40,37 @@ export async function getSharedText(): Promise<string | null> {
 
 /**
  * Clear the native buffer after the text has been routed to the intake pipeline.
- * Prevents re-processing on subsequent checks.
+ * Must be called after routing to prevent re-processing on next check.
  */
 export function clearSharedText(): void {
     if (!ShareIntentNative) return;
     try {
         ShareIntentNative.clearSharedText();
     } catch {
-        // Silently ignore
+        // Silently ignore — module may not be linked
     }
 }
 
 export type ShareIntentListener = (event: { text: string }) => void;
 
 /**
- * Subscribe to share intent events (warm start — app already running).
+ * Subscribe to share intent events for warm-start shares.
+ * When the app is already running and receives a new share intent,
+ * the native module emits "onShareIntent" with { text: string }.
  * Returns an unsubscribe function.
  */
 export function addShareIntentListener(listener: ShareIntentListener): () => void {
     if (!ShareIntentNative) return () => { };
     try {
-        const { EventEmitter: ExpoEventEmitter } = require('expo-modules-core');
-        const emitter = new ExpoEventEmitter(ShareIntentNative);
-        const subscription = emitter.addListener('onShareIntent', listener);
+        const ExpoModulesCore = require('expo-modules-core');
+        const emitter = new ExpoModulesCore.EventEmitter(ShareIntentNative);
+        const subscription = emitter.addListener('onShareIntent', (event: any) => {
+            if (event?.text && typeof event.text === 'string') {
+                listener(event);
+            }
+        });
         return () => subscription.remove();
     } catch {
         return () => { };
     }
 }
-
