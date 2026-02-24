@@ -9,8 +9,8 @@
     "web": "expo start --web",
     "tunnel": "expo start --tunnel",
     "test": "jest --passWithNoTests",
-    "eval": "npx ts-node eval/runEval.ts",
-    "eval:baseline": "npx ts-node eval/runEval.ts --baseline",
+    "eval": "tsx eval/runEval.ts",
+    "eval:baseline": "tsx eval/runEval.ts --baseline",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -60,6 +60,7 @@
     "jest-expo": "~52.0.0",
     "react-test-renderer": "18.2.0",
     "supertest": "^7.2.2",
+    "tsx": "^4.21.0",
     "typescript": "~5.8.3"
   },
   "private": true
