@@ -10,6 +10,7 @@ const OUTPUT_JSON = path.join(__dirname, 'results.json');
 const OUTPUT_MD = path.join(__dirname, 'results.md');
 const BASELINE_JSON = path.join(__dirname, 'baseline.json');
 const isBaselineMode = process.argv.includes('--baseline');
+const isStrictMode = process.argv.includes('--strict');
 
 async function runEval() {
     const lines = fs.readFileSync(EVAL_DATA, 'utf-8').split('\n').filter(Boolean);
@@ -162,6 +163,35 @@ ${runLlm ? `
 
     fs.writeFileSync(OUTPUT_MD, md);
     console.log(`Eval complete. See /eval/results.md`);
+
+    if (isStrictMode) {
+        console.log('\n--- Strict Mode Checks ---');
+        let failed = false;
+
+        const detFP = parseFloat(metrics.deterministic.falsePositiveRate);
+        const detMatch = parseFloat(metrics.deterministic.exactMatchRate);
+
+        if (detFP > 0) {
+            console.error(`❌ Regression Error: Deterministic False Positive Rate is ${detFP} (Expected 0)`);
+            failed = true;
+        } else {
+            console.log(`✅ Deterministic False Positive Rate is 0`);
+        }
+
+        if (detMatch < 0.90) {
+            console.error(`❌ Regression Error: Deterministic Match Rate is ${detMatch} (Expected >= 0.90)`);
+            failed = true;
+        } else {
+            console.log(`✅ Deterministic Match Rate is >= 0.90`);
+        }
+
+        if (failed) {
+            console.error('❌ Eval pipeline failed strict gates.');
+            process.exit(1);
+        } else {
+            console.log('✅ Eval pipeline passed strict gates.');
+        }
+    }
 }
 
 runEval().catch(console.error);
