@@ -1,67 +1,56 @@
 import OpenAI from 'openai';
 import { z } from 'zod';
-import type { GiftOrVoucherDraft, ClarificationQuestion, SourceType } from '../../lib/types';
+import type { SourceType } from '../../lib/types';
+import type { ExtractionResult } from '../../lib/ai/extractionTypes';
+import { extractWithEvidence } from '../../lib/ai/extractWithEvidence';
+import { validateExtractionResult } from '../../lib/ai/normalizeValidate';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
 const openai = new OpenAI({
-    apiKey: process.env.AI_API_KEY || '',
+    apiKey: process.env.OPENAI_API_KEY || '',
 });
 
-// Reuse identical logical shape to ensure the frontend doesn't break
+// Phase AI-10 Structure: Schema enforces that LLM returns per-field objects with value+evidence
+const FieldResultSchema = <T extends z.ZodTypeAny>(valueType: T) => z.object({
+    value: valueType.nullable(),
+    evidenceSnippet: z.string().optional().describe('The exact text snippet from the raw message that proves this value. Must be a precise substring.'),
+});
+
+const AmountValueSchema = z.object({
+    value: z.number(),
+    currency: z.string().optional()
+});
+
 export const ExpectedResponseSchema = z.object({
-    title: z.string().optional(),
-    merchant: z.string().optional(),
-    amount: z.string().or(z.number()).optional()
-        .transform(val => typeof val === 'string' ? parseFloat(val) : val),
-    currency: z.string().optional(),
-    code: z.string().optional(),
-    expirationDate: z.string().optional(),
-    sourceType: z.enum(['whatsapp', 'sms', 'manual', 'other']).default('other'),
-    sourceText: z.string(),
-    notes: z.string().optional(),
-    confidence: z.number().min(0).max(1),
-    assumptions: z.array(z.string()),
-    inferredFields: z.array(z.string()).optional(),
-    missingRequiredFields: z.array(z.enum([
-        'title', 'merchant', 'amount', 'currency', 'code', 'expirationDate',
-        'sourceType', 'sourceText', 'notes', 'confidence', 'assumptions',
-        'missingRequiredFields', 'questions'
-    ])),
-    questions: z.array(z.object({
-        key: z.enum([
-            'title', 'merchant', 'amount', 'currency', 'code', 'expirationDate',
-            'sourceType', 'sourceText', 'notes', 'confidence', 'assumptions',
-            'missingRequiredFields', 'questions'
-        ]),
-        questionText: z.string(),
-        inputType: z.enum(['text', 'number', 'date'])
-    }))
+    isVoucher: z.boolean().describe('True if the text is a gift card, coupon, or voucher. False otherwise.'),
+    fields: z.object({
+        title: FieldResultSchema(z.string()),
+        store: FieldResultSchema(z.string()),
+        amount: FieldResultSchema(AmountValueSchema),
+        code: FieldResultSchema(z.string()),
+        expiryDate: FieldResultSchema(z.string().describe('Must be YYYY-MM-DD')),
+    }).optional()
 });
 
-export async function extractWithLlm(text: string, sourceType: SourceType): Promise<GiftOrVoucherDraft | null> {
+export async function extractWithLlm(text: string, sourceType: SourceType): Promise<ExtractionResult | null> {
     const model = process.env.AI_MODEL || 'gpt-4o-mini';
     const timeoutMs = parseInt(process.env.AI_TIMEOUT_MS || '8000', 10);
-    const maxQuestions = parseInt(process.env.AI_MAX_QUESTIONS || '1', 10);
 
     const systemPrompt = `
-You are a deterministic parsing engine for an Israeli Coupon/Gift Card Wallet app.
-Extract all structured data from the user's raw message strictly as a JSON object matching the requested schema.
+You are an extraction engine for an Israeli Coupon/Gift Card Wallet app.
+Extract all structured data strictly matching the requested JSON schema.
 
 CRITICAL RULES:
 1. ONLY return a raw JSON object. Do not include markdown codeblocks (no \`\`\`json).
-2. If the message is NOT a gift card, coupon, store credit, or voucher (e.g. personal chat, news, flight tickets, tracking numbers, OTP codes, password resets), you MUST return \`null\`.
-3. Currencies should be ISO codes (e.g. ₪ = "ILS", $ = "USD", € = "EUR"). Default to ILS if none found.
-4. Expiration dates MUST be formatted as ISO 8601 strings (e.g. 2026-12-31T22:00:00.000Z).
-5. If any key fields (title, amount, code, expirationDate) cannot be determined, append their keys to the "missingRequiredFields" array.
-6. If you make a strong assumption or inference to determine a field (like guessing ILS for currency or assuming an expiration date), append the field's key (e.g. "amount", "expirationDate") to the "inferredFields" array.
-7. IF AND ONLY IF "title" is missing AND the text is definitely a voucher, generate exactly ${maxQuestions} question(s) in Hebrew asking the user to provide the title.
-   Example: "איך נקרא לשובר או למתנה הזו?"
-   Never ask questions for optional fields (like amount, code, or date).
-8. State any deductions logically in the "assumptions" array in English.
-9. Return a "confidence" float between 0.0 and 1.0 reflecting your extraction certainty.
+2. Set "isVoucher" to false if the message is NOT a gift card, coupon, store credit, or voucher (e.g. personal chat, news, flight tickets, tracking numbers).
+3. For every field extracted, you MUST provide an "evidenceSnippet". This must be an EXACT literal substring from the Raw Text proving the value. Do not paraphrase.
+4. Currencies should be ISO codes (e.g. ₪ = "ILS", $ = "USD", € = "EUR"). Default to ILS if none found.
+5. Expiration dates MUST be formatted exactly as YYYY-MM-DD.
+6. Make logical inferences if necessary (e.g. guessing the Store name from the context or determining the Title), but the evidenceSnippet should reflect the text that led to your inference.
 `;
+
 
     const userPrompt = `
 Source Type: ${sourceType}
@@ -98,41 +87,59 @@ Raw Text: ${text}
             // Zod validation strictly enforces the Phase 1 Output schema. Allow it to throw.
             const parsedJson = JSON.parse(content);
 
-            // Explicit Non-voucher check: if the LLM returned exactly null, resolve immediately rather than falling back to regex.
-            if (parsedJson === null) {
-                return null as any;
+            // Explicit Non-voucher check
+            if (parsedJson === null || parsedJson.isVoucher === false) {
+                return null;
             }
 
             const validated = ExpectedResponseSchema.parse(parsedJson);
+            if (!validated.fields) return null;
 
-            // Map to exact required interface
-            return {
-                title: validated.title,
-                merchant: validated.merchant,
-                amount: validated.amount,
-                currency: validated.currency,
-                code: validated.code,
-                expirationDate: validated.expirationDate,
-                sourceType: sourceType,
-                sourceText: text, // Echo back exactly
-                notes: validated.notes,
-                confidence: validated.confidence,
-                assumptions: validated.assumptions,
-                inferredFields: validated.inferredFields as any,
-                missingRequiredFields: validated.missingRequiredFields || [],
-                questions: validated.questions || [],
+            // Helper to map LLM snippet to exact start/end positions in source text
+            const mapEvidence = (snippet?: string): any[] => {
+                if (!snippet) return [];
+                const start = text.indexOf(snippet);
+                if (start === -1) return []; // Snippet hallucinated
+                return [{ start, end: start + snippet.length, text: snippet, source: 'llm' }];
             };
+
+            const mapField = (f: any) => ({
+                value: f.value ?? null,
+                confidence: f.value ? 'high' as const : 'low' as const, // LLM outputs start as high confidence if present
+                evidence: mapEvidence(f.evidenceSnippet),
+                issues: []
+            });
+
+            const rawResult: ExtractionResult = {
+                fields: {
+                    title: mapField(validated.fields.title),
+                    store: mapField(validated.fields.store),
+                    amount: mapField(validated.fields.amount),
+                    code: mapField(validated.fields.code),
+                    expiryDate: mapField(validated.fields.expiryDate)
+                },
+                summary: { missingFieldCount: 0, needsReviewFieldCount: 0, issues: [] },
+                routingMeta: { used: 'llm' }
+            };
+
+            // Run strict validation layer — this will downgrade hallucinated evidence or bad dates/amounts to low confidence
+            return validateExtractionResult(rawResult, text);
 
         } catch (e: any) {
             clearTimeout(timeout);
             console.warn(`[LLM Attempt ${attempt}] Failed: ${e.message}`);
 
             if (attempt === maxAttempts) {
-                // Throw out of loop on final failure so the backend catches and falls back to regex
-                throw new Error(`LLM Extraction Failed after ${maxAttempts} attempts: ${e.message}`);
+                console.warn(`LLM Extraction fully failed, falling back to offline regex. Error: ${e.message}`);
+                // Fallback to purely offline engine
+                const offline = extractWithEvidence(text, sourceType);
+                const validated = validateExtractionResult(offline, text);
+                validated.routingMeta.used = 'hybrid'; // indicate we tried LLM but fell back
+                return validated;
             }
         }
     }
 
-    throw new Error('LLM Extraction Failed: Unexpected execution path.');
+    return null;
 }
+

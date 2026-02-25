@@ -3,11 +3,11 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { z } from 'zod';
 import rateLimit from 'express-rate-limit';
-// Import deterministic algorithm
-import { extractGiftFromText } from '../lib/ai/extractGiftFromText';
-// Import optional LLM algorithm
-import { extractWithLlm, ExpectedResponseSchema } from './llm/extractWithLlm';
-import { shouldUseLlm } from './llm/routing';
+import { extractWithEvidence } from '../lib/ai/extractWithEvidence';
+import { extractWithLlm } from './llm/extractWithLlm';
+import { validateExtractionResult } from '../lib/ai/normalizeValidate';
+import { shouldUseLlmV2 } from './llm/routing';
+import { toGiftOrVoucherDraft, ExtractionResult } from '../lib/ai/extractionTypes';
 import type { SourceType, GiftOrVoucherDraft } from '../lib/types';
 import { PostHog } from 'posthog-node';
 import crypto from 'crypto';
@@ -29,6 +29,11 @@ if (analyticsEnabled && analyticsProvider === 'posthog') {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+if (process.env.AI_PROVIDER === 'llm' && !process.env.OPENAI_API_KEY) {
+    console.warn('\x1b[33m[WARNING] OPENAI_API_KEY is not set but AI_PROVIDER=llm. LLM mode is disabled, falling back to deterministic extraction.\x1b[0m');
+    process.env.AI_PROVIDER = 'deterministic';
+}
+
 // Security Middleware
 app.use(cors());
 app.use(express.json());
@@ -46,7 +51,7 @@ const MAX_CONCURRENT_LLM_REQUESTS = 5;
 
 // Memory Cache with 24h TTL + Rolling Error Window Guardrails
 const LLM_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-const responseCache = new Map<string, { value: GiftOrVoucherDraft; expiresAt: number }>();
+const responseCache = new Map<string, { value: ExtractionResult; expiresAt: number }>();
 
 let errorWindow: ('success' | 'fallback' | 'invalid_json')[] = [];
 const ERROR_WINDOW_SIZE = 100;
@@ -75,7 +80,7 @@ const extractRequestSchema = z.object({
 });
 
 
-app.post('/ai/extract', async (req, res) => {
+app.post('/ai/extract', async (req: express.Request, res: express.Response): Promise<any> => {
     const requestId = req.header('X-Request-ID') || Math.random().toString(36).substring(7);
     const sessionId = req.header('X-Session-ID') || 'unknown';
     const clientIp = req.ip || req.socket.remoteAddress;
@@ -137,20 +142,21 @@ app.post('/ai/extract', async (req, res) => {
         const parsedBody = extractRequestSchema.parse(req.body);
         const { sourceText, sourceType } = parsedBody;
 
-        // 1. Initial Fast Deterministic Check
-        const detDraft = extractGiftFromText(sourceText, sourceType as SourceType);
+        // 1. Initial Fast Deterministic Check (Trust Layer Offline Engine)
+        const detResult = extractWithEvidence(sourceText, sourceType as SourceType);
+        const detValidated = validateExtractionResult(detResult, sourceText);
 
-        let draft: GiftOrVoucherDraft | null = detDraft;
+        let finalResult: ExtractionResult | null = detValidated;
 
-        // 2. Hybrid Provider Execution / Routing
-        if (process.env.AI_PROVIDER === 'llm' && shouldUseLlm(sourceText, detDraft)) {
+        // 2. Hybrid Provider Execution / Routing (Trust Layer V2 Router)
+        if (process.env.AI_PROVIDER === 'llm' && shouldUseLlmV2(sourceText, detValidated)) {
             const safeSourceType = sourceType || 'other';
             const cacheKey = crypto.createHash('sha256').update(sourceText + '|' + safeSourceType).digest('hex');
 
             if (responseCache.has(cacheKey)) {
                 const cached = responseCache.get(cacheKey)!;
                 if (cached.expiresAt > Date.now()) {
-                    draft = cached.value;
+                    finalResult = cached.value;
                     trackBackendEvent('llm_cache_hit', { success: true });
                 } else {
                     responseCache.delete(cacheKey); // Evict stale cache entry
@@ -158,7 +164,7 @@ app.post('/ai/extract', async (req, res) => {
             }
 
             // Execute if cache loop hasn't securely extracted the map:
-            if (draft === detDraft) {
+            if (finalResult === detValidated) {
                 if (llmAutoDisabled) {
                     trackBackendEvent('extract_fallback', { reason: 'auto_disabled' });
                 } else if (activeLlmRequests >= MAX_CONCURRENT_LLM_REQUESTS) {
@@ -168,62 +174,58 @@ app.post('/ai/extract', async (req, res) => {
                     activeLlmRequests++;
                     try {
                         // Attempt OpenAI extraction strictly
-                        const llmResult = await extractWithLlm(sourceText, sourceType as SourceType);
+                        // Note: extractWithLlm now returns ExtractionResult and internally uses validateExtractionResult
+                        const safeSourceType = (sourceType || 'other') as SourceType;
+                        const llmResult = await extractWithLlm(sourceText, safeSourceType);
 
                         if (llmResult === null) {
                             // Model explicitly said this is irrelevant text. 
-                            draft = null;
+                            finalResult = null;
                         } else {
-                            draft = llmResult;
+                            finalResult = llmResult;
                             // Cache successful expensive result
                             if (responseCache.size >= 1000) {
                                 const firstKey = responseCache.keys().next().value;
-                                responseCache.delete(firstKey);
+                                if (firstKey) {
+                                    responseCache.delete(firstKey);
+                                }
                             }
                             responseCache.set(cacheKey, { value: llmResult, expiresAt: Date.now() + LLM_CACHE_TTL_MS });
                         }
 
                         trackBackendEvent('llm_used', { success: true });
                     } catch (llmError: any) {
-                        console.warn(`[REQ ${requestId}] LLM failed (${llmError.message}). Falling back to deterministic regex.`);
+                        console.warn(`[REQ ${requestId}] LLM failed (${llmError.message}). Falling back to deterministic offline evidence.`);
 
                         trackBackendEvent('extract_fallback', {
                             reason: llmError.message?.toLowerCase().includes('timeout') ? 'timeout' : 'provider_error'
                         });
 
                         // Fallback deterministic execution ensuring we return *something* if regex had a clue
-                        draft = detDraft;
-                        if (draft) {
-                            draft.assumptions = draft.assumptions || [];
-                            draft.assumptions.push("LLM output invalid or timed out; fell back to deterministic parsing.");
-                        }
+                        finalResult = detValidated;
+                        finalResult.summary.issues = finalResult.summary.issues || [];
+                        finalResult.summary.issues.push("LLM output invalid or timed out; fell back to offline parsing.");
+                        finalResult.routingMeta.used = 'hybrid';
                     } finally {
                         activeLlmRequests--;
                     }
                 }
             }
-        } // Missed brace
+        }
 
         // If the decision (via LLM returning strict null) is that this is irrelevant spam/chat:
-        if (draft === null) {
+        if (finalResult === null) {
             return res.json(null); // Explicit non-voucher
         }
 
-        // 3. Strict Unified Validation
-        let validatedDraft;
-        try {
-            validatedDraft = ExpectedResponseSchema.parse(draft);
-        } catch (validationError) {
-            console.error(`[REQ ${requestId}] Output Validation Error:`, validationError);
-            recordLlmResult('invalid_json');
-            trackBackendEvent('extract_fail', { reason: 'invalid_json' });
-            return res.status(500).json({ error: 'Internal server error: Output validation failed. The parser returned an invalid schema.' });
-        }
+        trackBackendEvent('extract_success', { routed: finalResult.routingMeta.used });
 
-        trackBackendEvent('extract_success');
+        // Phase AI-10: Convert the internal ExtractionResult back to the legacy UI draft contract
+        // This ensures NO UI CHANGES are needed on the frontend.
+        const uiDraftPayload = toGiftOrVoucherDraft(finalResult, sourceText, sourceType as SourceType);
 
-        // Return the structured Draft identical to the offline flow
-        res.json(validatedDraft);
+        // Return the structured Draft identical to the legacy flow
+        res.json(uiDraftPayload);
     } catch (error) {
         if (error instanceof z.ZodError) {
             res.status(400).json({ error: 'Invalid request', details: error.flatten() });

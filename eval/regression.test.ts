@@ -1,16 +1,9 @@
 import fs from 'fs';
 import path from 'path';
-import { extractGiftFromText } from '../lib/ai/extractGiftFromText';
-import { ExpectedResponseSchema, extractWithLlm } from '../backend/llm/extractWithLlm';
-
-function validateOutput(draft: any) {
-    if (draft === null) return null;
-    try {
-        return ExpectedResponseSchema.parse(draft);
-    } catch {
-        return null;
-    }
-}
+import { extractWithEvidence } from '../lib/ai/extractWithEvidence';
+import { validateExtractionResult } from '../lib/ai/normalizeValidate';
+import { extractWithLlm } from '../backend/llm/extractWithLlm';
+import { toGiftOrVoucherDraft } from '../lib/ai/extractionTypes';
 
 const EVAL_DATA = path.join(__dirname, 'messages.jsonl');
 const BASELINE_JSON = path.join(__dirname, 'baseline.json');
@@ -40,8 +33,9 @@ describe('Extraction Quality Regression Constraints', () => {
         let detNeedsReviewTotal = 0;
 
         for (const sample of data) {
-            const detRaw = extractGiftFromText(sample.text, 'whatsapp');
-            const detValid = validateOutput(detRaw);
+            const detRaw = extractWithEvidence(sample.text, 'whatsapp');
+            const detValidated = validateExtractionResult(detRaw, sample.text);
+            const detValid = toGiftOrVoucherDraft(detValidated, sample.text, 'whatsapp');
 
             if (sample.expected === null) {
                 if (detValid && (detValid.missingRequiredFields?.length || 0) < 2) {
@@ -74,7 +68,7 @@ describe('Extraction Quality Regression Constraints', () => {
         expect(avgNeedsReviewFieldCount).toBeLessThanOrEqual(base.avgNeedsReviewFieldCount + tolerance);
     });
 
-    if (process.env.OPENAI_API_KEY || process.env.AI_API_KEY) {
+    if (process.env.OPENAI_API_KEY) {
         it('LLM improves extraction quality (missing or inferred fields) vs deterministic', async () => {
             let detMissingFieldsTotal = 0;
             let detNeedsReviewTotal = 0;
@@ -83,16 +77,17 @@ describe('Extraction Quality Regression Constraints', () => {
             let llmNeedsReviewTotal = 0;
 
             for (const sample of data) {
-                const detRaw = extractGiftFromText(sample.text, 'whatsapp');
-                const detValid = validateOutput(detRaw);
+                const detRaw = extractWithEvidence(sample.text, 'whatsapp');
+                const detValidated = validateExtractionResult(detRaw, sample.text);
+                const detValid = toGiftOrVoucherDraft(detValidated, sample.text, 'whatsapp');
 
                 if (sample.expected !== null && detValid) {
                     detMissingFieldsTotal += detValid.missingRequiredFields?.length || 0;
                     detNeedsReviewTotal += detValid.inferredFields?.length || 0;
                 }
 
-                const llmRaw = await extractWithLlm(sample.text, 'whatsapp');
-                const llmValid = validateOutput(llmRaw);
+                const llmExtraction = await extractWithLlm(sample.text, 'whatsapp');
+                const llmValid = llmExtraction ? toGiftOrVoucherDraft(llmExtraction, sample.text, 'whatsapp') : null;
 
                 if (sample.expected !== null && llmValid) {
                     llmMissingFieldsTotal += llmValid.missingRequiredFields?.length || 0;

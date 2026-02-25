@@ -57,7 +57,7 @@ The application includes a centralized deterministic AI extraction pipeline that
 ```bash
 cd backend
 npm install
-# Copy the environment file and configure (e.g. inject AI_API_KEY if testing LLM mode)
+# Copy the environment file and configure (e.g. inject OPENAI_API_KEY if testing LLM mode)
 cp .env.example .env
 npm run dev
 ```

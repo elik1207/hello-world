@@ -1,8 +1,9 @@
 import fs from 'fs';
 import path from 'path';
-import { extractGiftFromText } from '../lib/ai/extractGiftFromText';
-import { ExpectedResponseSchema, extractWithLlm } from '../backend/llm/extractWithLlm';
-import { z } from 'zod';
+import { extractWithEvidence } from '../lib/ai/extractWithEvidence';
+import { validateExtractionResult } from '../lib/ai/normalizeValidate';
+import { extractWithLlm } from '../backend/llm/extractWithLlm';
+import { toGiftOrVoucherDraft } from '../lib/ai/extractionTypes';
 
 const EVAL_DATA = path.join(__dirname, 'messages.jsonl');
 const OUTPUT_JSON = path.join(__dirname, 'results.json');
@@ -10,21 +11,11 @@ const OUTPUT_MD = path.join(__dirname, 'results.md');
 const BASELINE_JSON = path.join(__dirname, 'baseline.json');
 const isBaselineMode = process.argv.includes('--baseline');
 
-// Use native zod to strictly validate
-function validateOutput(draft: any) {
-    if (draft === null) return null;
-    try {
-        return ExpectedResponseSchema.parse(draft);
-    } catch {
-        return null;
-    }
-}
-
 async function runEval() {
     const lines = fs.readFileSync(EVAL_DATA, 'utf-8').split('\n').filter(Boolean);
     const data = lines.map(line => JSON.parse(line));
 
-    let runLlm = (!isBaselineMode) && (!!process.env.OPENAI_API_KEY || !!process.env.AI_API_KEY);
+    let runLlm = (!isBaselineMode) && (!!process.env.OPENAI_API_KEY);
 
     let detMatches = 0;
     let detFalsePositives = 0;
@@ -45,9 +36,12 @@ async function runEval() {
     console.log(`Starting Eval. Vouchers: ${totalVouchers}, Irrelevant: ${totalIrrelevant}, LLM Enabled: ${runLlm}`);
 
     for (const sample of data) {
-        // 1. Run Deterministic
-        const detRaw = extractGiftFromText(sample.text, 'whatsapp');
-        const detValid = validateOutput(detRaw);
+        // 1. Run Deterministic (Offline Trust Layer)
+        const detExtractionRaw = extractWithEvidence(sample.text, 'whatsapp');
+        const detExtractionValidated = validateExtractionResult(detExtractionRaw, sample.text);
+
+        // Option B: Validate regressions on the legacy Draft format guaranteed by toGiftOrVoucherDraft
+        const detValid = toGiftOrVoucherDraft(detExtractionValidated, sample.text, 'whatsapp');
 
         // Score Deterministic
         if (sample.expected === null) {
@@ -56,9 +50,9 @@ async function runEval() {
                 detFalsePositives++;
             }
         } else {
-            if (detValid) {
+            if (detValid && detValid.missingRequiredFields?.length !== 4) { // 4 means completely empty
                 detMissingFieldsTotal += detValid.missingRequiredFields?.length || 0;
-                detNeedsReviewTotal += detValid.inferredFields?.length || 0; // Using inferred as proxy for "needs review"
+                detNeedsReviewTotal += detValid.inferredFields?.length || 0;
 
                 if (detValid.title === sample.expected.title && detValid.code === sample.expected.code) {
                     detMatches++;
@@ -70,13 +64,17 @@ async function runEval() {
         if (runLlm) {
             try {
                 const startTime = Date.now();
-                const llmRaw = await extractWithLlm(sample.text, 'whatsapp');
+                // Phase 10: extractWithLlm returns ExtractionResult
+                const llmExtraction = await extractWithLlm(sample.text, 'whatsapp');
                 const elapsedMs = Date.now() - startTime;
 
-                llmCalls++;
+                if (llmExtraction) {
+                    llmCalls++;
+                }
                 llmTotalLatency += elapsedMs;
 
-                const llmValid = validateOutput(llmRaw);
+                // For eval comparison against the old baseline JSONs, map it to GiftOrVoucherDraft
+                const llmValid = llmExtraction ? toGiftOrVoucherDraft(llmExtraction, sample.text, 'whatsapp') : null;
 
                 if (sample.expected === null) {
                     if (llmValid !== null) {
@@ -114,6 +112,7 @@ async function runEval() {
             avgMissingFieldCount: (llmMissingFieldsTotal / totalVouchers).toFixed(2),
             avgNeedsReviewFieldCount: (llmNeedsReviewTotal / totalVouchers).toFixed(2),
             fallbackRate: (llmFallbacks / data.length).toFixed(2),
+            escalationRate: (llmCalls / data.length).toFixed(2),
             avgLatencyMs: llmCalls > 0 ? Object.is(Math.round(llmTotalLatency / llmCalls), -0) ? 0 : Math.round(llmTotalLatency / llmCalls) : 0
         } : null
     };
@@ -153,6 +152,7 @@ ${runLlm ? `
 - **False Positive Rate:** ${(metrics.llm!.falsePositiveRate as unknown as number) * 100}%
 - **Avg Missing Fields:** ${metrics.llm!.avgMissingFieldCount}
 - **Avg Needs Review Fields:** ${metrics.llm!.avgNeedsReviewFieldCount}
+- **LLM Escalation Rate (Router bypasses offline):** ${(metrics.llm!.escalationRate as unknown as number) * 100}%
 - **Fallback Rate:** ${(metrics.llm!.fallbackRate as unknown as number) * 100}%
 - **Avg Latency:** ${metrics.llm!.avgLatencyMs}ms
 ` : '*LLM evaluation skipped (No API key present during `npm run eval`).*'}
