@@ -10,7 +10,7 @@ A personal coupon & discount manager app. Store, organize, and track your coupon
 
 - 🎨 **Premium Dark Theme**: A stunning, high-contrast dark aesthetic that feels modern and native.
 - 🎁 **General Wallet**: Store not just Coupons, but also Gift Cards (with remaining balances) and one-time Vouchers.
-- ⏳ **Urgency Inbox**: Smartly groups items by expiration (Expiring Soon, This Month, Safe) with visual edge-color indicators.
+- ⏳ **Urgency Inbox**: Intuitive expiry-based sorting with dedicated tabs (Active / Archive). Bucketed grouping (Expiring Soon, This Month, Safe) is *(Planned / Future work)*.
 - 📊 **Financial Insights**: Tracks your "Trapped Value" (active funds) and "Lost Value" (expired funds). *(Planned / Future work)*
 - 📷 **Advanced Display**: Visualizes Barcode data and brand Image URLs beautifully on the cards.
 - ➕ **Rich Metadata**: Add Store, Category, Sender, and Event information.
