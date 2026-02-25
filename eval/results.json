@@ -1,0 +1,12 @@
+{
+  "totalSamples": 60,
+  "vouchers": 40,
+  "irrelevant": 20,
+  "deterministic": {
+    "exactMatchRate": "0.00",
+    "falsePositiveRate": "0.00",
+    "avgMissingFieldCount": "1.98",
+    "avgNeedsReviewFieldCount": "1.45"
+  },
+  "llm": null
+}

@@ -1,5 +1,14 @@
 # Phase 10: OS Intake (Share / Deep Link / Clipboard)
 
+## Trust Layer Architecture (v29)
+The AI Intake flow now runs on a "Trust Layer" that guarantees explainability and hallucination defense.
+1. **Offline Extraction**: All texts first pass through `extractWithEvidence()`, which deterministically captures not just values, but `confidence` scores and `evidence` (start/end character indices mapping to the exact source text).
+2. **Validation Firewall**: The `validateExtractionResult()` layer runs on all offline and LLM outputs, ensuring dates and amounts are sane, and that evidence matches the text. Invalid fields are downgraded to 'low' confidence instead of crashing.
+3. **Router V2 (`shouldUseLlmV2`)**: The backend decides whether an LLM call is justified based on the offline confidence:
+   - Escalates if ANY required field (merchant, code, amount) is strictly missing.
+   - Escalates if `needsReview` fields > 1.
+   - Escalates if core fields (Amount, Code, Expiry) are explicitly mapped as 'low' confidence.
+
 ## Supported Sources
 
 ### 1. Deep Link (`couponwallet://intake?text=...`)
