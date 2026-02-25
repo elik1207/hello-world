@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, Switch } from 'react-native';
 import { ArrowLeft, Sparkles, CheckCircle2, AlertCircle } from 'lucide-react-native';
 import type { Coupon, ItemType, SourceType, GiftOrVoucherDraft } from '../lib/types';
-import { extractGiftFromText } from '../lib/ai/extractGiftFromText';
+import { extractWithEvidence } from '../lib/ai/extractWithEvidence';
+import { validateExtractionResult } from '../lib/ai/normalizeValidate';
+import { toGiftOrVoucherDraft } from '../lib/ai/extractionTypes';
 import { LinearGradient } from 'expo-linear-gradient';
 import { trackEvent, sessionId } from '../lib/analytics';
 import { redactPII } from '../lib/redact';
@@ -55,6 +57,8 @@ export function AddViaAIPage({ onSave, onCancel, initialText }: AddViaAIPageProp
         let result: GiftOrVoucherDraft;
 
         try {
+            let finalFlags;
+
             if (process.env.EXPO_PUBLIC_AI_MODE === 'backend') {
                 // Route through the new hybrid fastify/express backend
                 const backendUrl = process.env.EXPO_PUBLIC_AI_BACKEND_URL || 'http://localhost:3000';
@@ -75,29 +79,36 @@ export function AddViaAIPage({ onSave, onCancel, initialText }: AddViaAIPageProp
                 if (!response.ok) {
                     throw new Error(`Backend Error: ${response.status} ${response.statusText}`);
                 }
-                result = await response.json();
+                const responseData = await response.json();
+
+                // The backend API has been updated to return the Draft layout for backwards compatibility
+                result = responseData;
+                // Force original unredacted text to be displayed and saved locally
+                result.sourceText = rawText;
+                finalFlags = computeQualityFlags(result, new Set());
             } else {
-                // Fallback to strict offline logic
-                result = extractGiftFromText(rawText, sourceType);
+                // Trust Layer: Offline extraction + Strict Validation
+                const rawExtraction = extractWithEvidence(rawText, sourceType);
+                const validatedExtraction = validateExtractionResult(rawExtraction, rawText);
+
+                result = toGiftOrVoucherDraft(validatedExtraction, rawText, sourceType);
+                finalFlags = computeQualityFlags(result, new Set());
             }
 
             setDraft(result);
             setEditedFields(new Set()); // Reset edits
 
-            // Phase 5.1: Centralized Quality Flags
-            const flags = computeQualityFlags(result, new Set());
-
             trackEvent('parse_success', {
                 requestId,
                 confidentScore: result.confidence,
-                missingFieldCount: flags.missingFieldCount,
-                hasAmount: flags.hasAmount,
-                hasCode: flags.hasCode,
-                hasExpiry: flags.hasExpiry,
-                needsReviewFieldCount: flags.needsReviewFieldCount
+                missingFieldCount: finalFlags.missingFieldCount,
+                hasAmount: finalFlags.hasAmount,
+                hasCode: finalFlags.hasCode,
+                hasExpiry: finalFlags.hasExpiry,
+                needsReviewFieldCount: finalFlags.needsReviewFieldCount
             });
 
-            if (flags.missingFields.includes('title') && result.questions && result.questions.length > 0) {
+            if (finalFlags.missingFields.includes('title') && result.questions && result.questions.length > 0) {
                 setStep('clarify');
                 trackEvent('clarify_shown', { requestId, reason: 'missing_title', questionCount: result.questions.length });
             } else {
