@@ -179,11 +179,11 @@ ${runLlm ? `
             console.log(`✅ Deterministic False Positive Rate is 0`);
         }
 
-        if (detMatch < 0.40) {
-            console.error(`❌ Regression Error: Deterministic Match Rate is ${detMatch} (Expected >= 0.40 baseline)`);
+        if (detMatch < 0.75) {
+            console.error(`❌ Regression Error: Deterministic Match Rate is ${detMatch} (Expected >= 0.75)`);
             failed = true;
         } else {
-            console.log(`✅ Deterministic Match Rate is >= 0.40`);
+            console.log(`✅ Deterministic Match Rate is ${detMatch} (Expected >= 0.75)`);
         }
 
         if (runLlm) {
