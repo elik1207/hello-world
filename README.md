@@ -26,9 +26,17 @@ A personal coupon & discount manager app. Store, organize, and track your coupon
 |---|---|
 | Framework | [Expo](https://expo.dev) (React Native) |
 | Styling | [NativeWind](https://www.nativewind.dev) (Tailwind CSS) |
-| Storage | AsyncStorage |
+| Storage | `expo-sqlite` (Source of Truth) / AsyncStorage (Legacy Import) |
 | Icons | lucide-react-native |
 | Language | TypeScript |
+
+---
+
+## Data & Storage Architecture
+
+**SQLite (`expo-sqlite`) is the single source of truth** for all coupon and wallet data.
+- **Migrations:** Managed securely via `PRAGMA user_version`. Schema upgrades run automatically on cold start.
+- **AsyncStorage (Legacy):** Perserved strictly for one-time backward-compatible imports from older App versions. It is no longer the primary persistent store.
 
 ---
 
