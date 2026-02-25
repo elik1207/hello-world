@@ -58,7 +58,17 @@ Then:
 - Press **`w`** to open in web browser
 - Scan the **QR code** with Expo Go to open on your phone (Android/iOS)
 
-### Hybrid AI Backend (Optional, Phase 4 & 5)
+### Packaging for Release
+
+To generate a clean ZIP archive of the project for sharing or testing, run:
+```bash
+npm run package:zip
+```
+> **Note:** This script automatically excludes heavy directories like `node_modules`, `.expo`, `.npm-cache`, and native build folders (`android/app/build`, `ios/Pods`) by design to keep the artifact small.
+
+---
+
+## 🧠 Hybrid AI Backend (Optional, Phase 4 & 5)
 The application includes a centralized deterministic AI extraction pipeline that can run identically on the client (offline) or natively on a Node.js (Express) server. **The server also supports an optional OpenAI fallback** that respects all deterministic rules and schemas while catching complex edge-cases.
 
 #### 1. Start the Express Backend Server

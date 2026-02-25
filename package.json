@@ -12,6 +12,7 @@
     "eval": "tsx eval/runEval.ts",
     "eval:baseline": "tsx eval/runEval.ts --baseline",
     "eval:strict": "tsx eval/runEval.ts --strict",
+    "package:zip": "bash scripts/package.sh",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
