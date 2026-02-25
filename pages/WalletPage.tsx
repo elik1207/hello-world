@@ -402,6 +402,58 @@ export function WalletPage({ coupons, onEdit, onDelete, onToggleStatus }: Wallet
                                 <Text style={{ fontSize: 12, color: '#a0aed4', fontWeight: '500' }}>items</Text>
                             </View>
                         </Pressable>
+
+                        <Pressable
+                            onPress={() => {
+                                if (expiringDaysFilter === 14) {
+                                    setExpiringDaysFilter(null);
+                                } else {
+                                    setActiveTab('active');
+                                    setExpiringDaysFilter(14);
+                                    setSortOption('expiry-asc');
+                                }
+                            }}
+                            style={{ backgroundColor: '#27305a', padding: 12, borderRadius: 16, minWidth: 130, borderWidth: 1, borderColor: expiringDaysFilter === 14 ? '#eab308' : '#3c4270' }}
+                        >
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                                <View style={{ backgroundColor: '#eab30822', padding: 4, borderRadius: 8 }}>
+                                    <AlertCircle size={14} color="#eab308" />
+                                </View>
+                                <Text style={{ fontSize: 13, color: '#a0aed4', fontWeight: '600' }}>Expiring 14d</Text>
+                            </View>
+                            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
+                                <Text style={{ fontSize: 20, fontWeight: '800', color: '#eab308' }}>
+                                    {kpiData.expiringSoon.in14Days.count}
+                                </Text>
+                                <Text style={{ fontSize: 12, color: '#a0aed4', fontWeight: '500' }}>items</Text>
+                            </View>
+                        </Pressable>
+
+                        <Pressable
+                            onPress={() => {
+                                if (expiringDaysFilter === 30) {
+                                    setExpiringDaysFilter(null);
+                                } else {
+                                    setActiveTab('active');
+                                    setExpiringDaysFilter(30);
+                                    setSortOption('expiry-asc');
+                                }
+                            }}
+                            style={{ backgroundColor: '#27305a', padding: 12, borderRadius: 16, minWidth: 130, borderWidth: 1, borderColor: expiringDaysFilter === 30 ? '#3b82f6' : '#3c4270' }}
+                        >
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                                <View style={{ backgroundColor: '#3b82f622', padding: 4, borderRadius: 8 }}>
+                                    <AlertCircle size={14} color="#3b82f6" />
+                                </View>
+                                <Text style={{ fontSize: 13, color: '#a0aed4', fontWeight: '600' }}>Expiring 30d</Text>
+                            </View>
+                            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
+                                <Text style={{ fontSize: 20, fontWeight: '800', color: '#3b82f6' }}>
+                                    {kpiData.expiringSoon.in30Days.count}
+                                </Text>
+                                <Text style={{ fontSize: 12, color: '#a0aed4', fontWeight: '500' }}>items</Text>
+                            </View>
+                        </Pressable>
                     </ScrollView>
 
                     <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#27305a', borderRadius: 12, paddingHorizontal: 12, marginBottom: 12, borderWidth: 1, borderColor: '#3c4270' }}>
