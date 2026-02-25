@@ -49,23 +49,28 @@ describe('Financial KPIs', () => {
         in20Days.setDate(today.getDate() + 20);
 
         const coupons: Coupon[] = [
+            // Standard amount coupon (counts: 1, value: 10)
             { ...baseCoupon, id: '1', status: 'active', type: 'coupon', discountType: 'amount', discountValue: 10, expiryDate: in5Days.toISOString().split('T')[0] } as Coupon,
-            { ...baseCoupon, id: '2', status: 'active', type: 'coupon', discountType: 'amount', discountValue: 20, expiryDate: in10Days.toISOString().split('T')[0] } as Coupon,
-            { ...baseCoupon, id: '3', status: 'active', type: 'coupon', discountType: 'amount', discountValue: 50, expiryDate: in20Days.toISOString().split('T')[0] } as Coupon,
+            // Percent coupon (counts: 1, value: 0)
+            { ...baseCoupon, id: '2', status: 'active', type: 'coupon', discountType: 'percent', discountValue: 20, expiryDate: in10Days.toISOString().split('T')[0] } as Coupon,
+            // Gift card falling back to remaining value (counts: 1, value: 50)
+            { ...baseCoupon, id: '3', status: 'active', type: 'gift_card', initialValue: 100, remainingValue: 50, expiryDate: in20Days.toISOString().split('T')[0] } as Coupon,
+            // Invalid/missing amount coupon but valid expiry (counts: 1, value: 0)
+            { ...baseCoupon, id: '4', status: 'active', type: 'voucher', expiryDate: in5Days.toISOString().split('T')[0] } as Coupon,
         ];
 
         const kpis = calculateFinancialKPIs(coupons);
 
-        // 5 days is in 7, 14, and 30 buckets.
-        expect(kpis.expiringSoon.in7Days.count).toBe(1);
+        // 5 days: id 1 (10) + id 4 (0)
+        expect(kpis.expiringSoon.in7Days.count).toBe(2);
         expect(kpis.expiringSoon.in7Days.value).toBe(10);
 
-        // 10 days is in 14 and 30 buckets, plus the 5 days one.
-        expect(kpis.expiringSoon.in14Days.count).toBe(2);
-        expect(kpis.expiringSoon.in14Days.value).toBe(30);
+        // 10 days: 7days items + id 2 (0 percent)
+        expect(kpis.expiringSoon.in14Days.count).toBe(3);
+        expect(kpis.expiringSoon.in14Days.value).toBe(10); // Still 10!
 
-        // 20 days is only in the 30 bucket, plus all previous.
-        expect(kpis.expiringSoon.in30Days.count).toBe(3);
-        expect(kpis.expiringSoon.in30Days.value).toBe(80);
+        // 20 days: 14days items + id 3 (50 remaining)
+        expect(kpis.expiringSoon.in30Days.count).toBe(4);
+        expect(kpis.expiringSoon.in30Days.value).toBe(60); // 10 + 50
     });
 });
