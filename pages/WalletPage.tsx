@@ -5,6 +5,7 @@ import { CouponCard } from '../components/CouponCard';
 import type { Coupon, SortOption, SavedView, SavedViewPayload } from '../lib/types';
 import { isExpired, formatCurrency, getDaysUntilExpiry } from '../lib/utils';
 import { calculateFinancialKPIs } from '../lib/finance/kpis';
+import { formatCurrencyILS } from '../lib/finance/formatCurrencyILS';
 import { LinearGradient } from 'expo-linear-gradient';
 import { listCoupons, getCoupons, getAllTags, listSavedViews, createSavedView, deleteSavedView } from '../lib/db';
 import { bulkMarkUsed, bulkMarkActive, bulkDeleteCoupons, bulkAddTags, bulkRemoveTags } from '../lib/bulkActions';
@@ -355,7 +356,7 @@ export function WalletPage({ coupons, onEdit, onDelete, onToggleStatus }: Wallet
                                 <Text style={{ fontSize: 13, color: '#a0aed4', fontWeight: '600' }}>Active Value</Text>
                             </View>
                             <Text style={{ fontSize: 20, fontWeight: '800', color: '#10b981' }}>
-                                {formatCurrency(kpiData.totalTrappedValue, 'USD').replace('$', '₪')}
+                                {formatCurrencyILS(kpiData.totalTrappedValue)}
                             </Text>
                         </Pressable>
 
@@ -373,7 +374,7 @@ export function WalletPage({ coupons, onEdit, onDelete, onToggleStatus }: Wallet
                                 <Text style={{ fontSize: 13, color: '#a0aed4', fontWeight: '600' }}>Lost Value</Text>
                             </View>
                             <Text style={{ fontSize: 20, fontWeight: '800', color: '#ef4444' }}>
-                                {formatCurrency(kpiData.totalLostValue, 'USD').replace('$', '₪')}
+                                {formatCurrencyILS(kpiData.totalLostValue)}
                             </Text>
                         </Pressable>
 
@@ -397,9 +398,11 @@ export function WalletPage({ coupons, onEdit, onDelete, onToggleStatus }: Wallet
                             </View>
                             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
                                 <Text style={{ fontSize: 20, fontWeight: '800', color: '#f59e0b' }}>
-                                    {kpiData.expiringSoon.in7Days.count}
+                                    {formatCurrencyILS(kpiData.expiringSoon.in7Days.value)}
                                 </Text>
-                                <Text style={{ fontSize: 12, color: '#a0aed4', fontWeight: '500' }}>items</Text>
+                                <Text style={{ fontSize: 12, color: '#a0aed4', fontWeight: '500' }}>
+                                    {kpiData.expiringSoon.in7Days.count} items
+                                </Text>
                             </View>
                         </Pressable>
 
@@ -423,9 +426,11 @@ export function WalletPage({ coupons, onEdit, onDelete, onToggleStatus }: Wallet
                             </View>
                             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
                                 <Text style={{ fontSize: 20, fontWeight: '800', color: '#eab308' }}>
-                                    {kpiData.expiringSoon.in14Days.count}
+                                    {formatCurrencyILS(kpiData.expiringSoon.in14Days.value)}
                                 </Text>
-                                <Text style={{ fontSize: 12, color: '#a0aed4', fontWeight: '500' }}>items</Text>
+                                <Text style={{ fontSize: 12, color: '#a0aed4', fontWeight: '500' }}>
+                                    {kpiData.expiringSoon.in14Days.count} items
+                                </Text>
                             </View>
                         </Pressable>
 
@@ -449,9 +454,11 @@ export function WalletPage({ coupons, onEdit, onDelete, onToggleStatus }: Wallet
                             </View>
                             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
                                 <Text style={{ fontSize: 20, fontWeight: '800', color: '#3b82f6' }}>
-                                    {kpiData.expiringSoon.in30Days.count}
+                                    {formatCurrencyILS(kpiData.expiringSoon.in30Days.value)}
                                 </Text>
-                                <Text style={{ fontSize: 12, color: '#a0aed4', fontWeight: '500' }}>items</Text>
+                                <Text style={{ fontSize: 12, color: '#a0aed4', fontWeight: '500' }}>
+                                    {kpiData.expiringSoon.in30Days.count} items
+                                </Text>
                             </View>
                         </Pressable>
                     </ScrollView>
