@@ -3,7 +3,8 @@ import { View, Text, TextInput, Pressable, ScrollView, Alert, TouchableOpacity }
 import { Search, ArrowDownUp, Inbox, Archive, PieChart, Wallet, TrendingDown, AlertCircle, CheckSquare, X, Tag as TagIcon, Trash2, MinusCircle } from 'lucide-react-native';
 import { CouponCard } from '../components/CouponCard';
 import type { Coupon, SortOption, SavedView, SavedViewPayload } from '../lib/types';
-import { isExpired, formatCurrency } from '../lib/utils';
+import { isExpired, formatCurrency, getDaysUntilExpiry } from '../lib/utils';
+import { calculateFinancialKPIs } from '../lib/finance/kpis';
 import { LinearGradient } from 'expo-linear-gradient';
 import { listCoupons, getCoupons, getAllTags, listSavedViews, createSavedView, deleteSavedView } from '../lib/db';
 import { bulkMarkUsed, bulkMarkActive, bulkDeleteCoupons, bulkAddTags, bulkRemoveTags } from '../lib/bulkActions';
@@ -30,6 +31,7 @@ export function WalletPage({ coupons, onEdit, onDelete, onToggleStatus }: Wallet
     // Quick toggles
     const [needsReviewOnly, setNeedsReviewOnly] = useState(false);
     const [missingOnly, setMissingOnly] = useState(false);
+    const [expiringDaysFilter, setExpiringDaysFilter] = useState<number | null>(null);
 
     // Saved Views
     const [savedViews, setSavedViews] = useState<SavedView[]>([]);
@@ -57,13 +59,6 @@ export function WalletPage({ coupons, onEdit, onDelete, onToggleStatus }: Wallet
         const tagsList = await getAllTags();
         setAllTags(tagsList);
 
-        let statusFilter: 'all' | 'active' | 'used' | 'expired' = 'all';
-        if (activeTab === 'active') statusFilter = 'active';
-        else if (activeTab === 'used') statusFilter = 'used';
-        // For 'expired', we fetch 'all' to safely fallback on the JS date check below
-        // just in case the throttled auto-expire cron hasn't hit a newly expired item yet.
-        else if (activeTab === 'expired') statusFilter = 'all';
-
         let sortCol: 'expiryDate' | 'createdAt' | 'amount' = 'expiryDate';
         let sortDir: 'asc' | 'desc' = 'asc';
 
@@ -73,7 +68,7 @@ export function WalletPage({ coupons, onEdit, onDelete, onToggleStatus }: Wallet
 
         const results = await listCoupons({
             searchText: searchTerm,
-            statusFilter,
+            statusFilter: 'all', // Always fetch all status to compute global KPIs across tabs
             needsReviewOnly,
             missingOnly,
             tagFilter: activeTagFilters,
@@ -83,6 +78,11 @@ export function WalletPage({ coupons, onEdit, onDelete, onToggleStatus }: Wallet
         });
 
         let finalFilter = results;
+        // Compute KPIs on the full result set (ignoring status tab)
+        const kpis = calculateFinancialKPIs(results);
+        setKpiData(kpis);
+
+        // Apply Tab Filter in memory
         if (activeTab === 'active') {
             finalFilter = results.filter(c => c.status === 'active' && !isExpired(c.expiryDate));
         } else if (activeTab === 'used') {
@@ -91,8 +91,17 @@ export function WalletPage({ coupons, onEdit, onDelete, onToggleStatus }: Wallet
             finalFilter = results.filter(c => c.status === 'expired' || (c.status === 'active' && isExpired(c.expiryDate)));
         }
 
+        // Apply Expiring Days Filter
+        if (expiringDaysFilter !== null) {
+            finalFilter = finalFilter.filter(c => {
+                if (!c.expiryDate) return false;
+                const daysLeft = getDaysUntilExpiry(c.expiryDate);
+                return daysLeft !== null && daysLeft >= 0 && daysLeft <= expiringDaysFilter;
+            });
+        }
+
         setDbCoupons(finalFilter);
-    }, [searchTerm, activeTab, sortOption, needsReviewOnly, missingOnly, activeTagFilters, untaggedOnly, coupons]); // re-run if parent `coupons` props changes (ie insert)
+    }, [searchTerm, activeTab, sortOption, needsReviewOnly, missingOnly, expiringDaysFilter, activeTagFilters, untaggedOnly, coupons]); // re-run if parent `coupons` props changes (ie insert)
 
     const fetchViews = useCallback(async () => {
         try {
@@ -108,6 +117,12 @@ export function WalletPage({ coupons, onEdit, onDelete, onToggleStatus }: Wallet
     useEffect(() => {
         fetchViews();
     }, [fetchViews]);
+
+    const [kpiData, setKpiData] = useState({
+        totalTrappedValue: 0,
+        totalLostValue: 0,
+        expiringSoon: { in7Days: { count: 0, value: 0 }, in14Days: { count: 0, value: 0 }, in30Days: { count: 0, value: 0 } }
+    });
 
     const filteredCoupons = dbCoupons; // Supplied directly from SQL listCoupons now.
 
@@ -249,6 +264,7 @@ export function WalletPage({ coupons, onEdit, onDelete, onToggleStatus }: Wallet
         setActiveTab(p.statusTab || 'all');
         setMissingOnly(!!p.missingOnly);
         setNeedsReviewOnly(!!p.needsReviewOnly);
+        setExpiringDaysFilter(null); // reset expiry filter when view is loaded
         setActiveTagFilters(p.tagFilter || []);
         setUntaggedOnly(!!p.untaggedOnly);
         // Map back to SortOption
@@ -323,6 +339,71 @@ export function WalletPage({ coupons, onEdit, onDelete, onToggleStatus }: Wallet
                         </ScrollView>
                     )}
 
+                    {/* Financial Dashboard Cards */}
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }} style={{ marginBottom: 16 }}>
+                        <Pressable
+                            onPress={() => {
+                                setActiveTab('active');
+                                setExpiringDaysFilter(null);
+                            }}
+                            style={{ backgroundColor: '#27305a', padding: 12, borderRadius: 16, minWidth: 130, borderWidth: 1, borderColor: activeTab === 'active' && expiringDaysFilter === null ? '#6366f1' : '#3c4270' }}
+                        >
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                                <View style={{ backgroundColor: '#10b98122', padding: 4, borderRadius: 8 }}>
+                                    <TrendingDown size={14} color="#10b981" />
+                                </View>
+                                <Text style={{ fontSize: 13, color: '#a0aed4', fontWeight: '600' }}>Active Value</Text>
+                            </View>
+                            <Text style={{ fontSize: 20, fontWeight: '800', color: '#10b981' }}>
+                                {formatCurrency(kpiData.totalTrappedValue, 'USD').replace('$', '₪')}
+                            </Text>
+                        </Pressable>
+
+                        <Pressable
+                            onPress={() => {
+                                setActiveTab('expired');
+                                setExpiringDaysFilter(null);
+                            }}
+                            style={{ backgroundColor: '#27305a', padding: 12, borderRadius: 16, minWidth: 130, borderWidth: 1, borderColor: activeTab === 'expired' ? '#ef4444' : '#3c4270' }}
+                        >
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                                <View style={{ backgroundColor: '#ef444422', padding: 4, borderRadius: 8 }}>
+                                    <PieChart size={14} color="#ef4444" />
+                                </View>
+                                <Text style={{ fontSize: 13, color: '#a0aed4', fontWeight: '600' }}>Lost Value</Text>
+                            </View>
+                            <Text style={{ fontSize: 20, fontWeight: '800', color: '#ef4444' }}>
+                                {formatCurrency(kpiData.totalLostValue, 'USD').replace('$', '₪')}
+                            </Text>
+                        </Pressable>
+
+                        <Pressable
+                            onPress={() => {
+                                if (expiringDaysFilter === 7) {
+                                    setExpiringDaysFilter(null);
+                                } else {
+                                    setActiveTab('active');
+                                    setExpiringDaysFilter(7);
+                                    setSortOption('expiry-asc');
+                                }
+                            }}
+                            style={{ backgroundColor: '#27305a', padding: 12, borderRadius: 16, minWidth: 130, borderWidth: 1, borderColor: expiringDaysFilter === 7 ? '#f59e0b' : '#3c4270' }}
+                        >
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                                <View style={{ backgroundColor: '#f59e0b22', padding: 4, borderRadius: 8 }}>
+                                    <AlertCircle size={14} color="#f59e0b" />
+                                </View>
+                                <Text style={{ fontSize: 13, color: '#a0aed4', fontWeight: '600' }}>Expiring 7d</Text>
+                            </View>
+                            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
+                                <Text style={{ fontSize: 20, fontWeight: '800', color: '#f59e0b' }}>
+                                    {kpiData.expiringSoon.in7Days.count}
+                                </Text>
+                                <Text style={{ fontSize: 12, color: '#a0aed4', fontWeight: '500' }}>items</Text>
+                            </View>
+                        </Pressable>
+                    </ScrollView>
+
                     <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#27305a', borderRadius: 12, paddingHorizontal: 12, marginBottom: 12, borderWidth: 1, borderColor: '#3c4270' }}>
                         <Search size={18} color="#a0aed4" />
                         <TextInput
@@ -373,7 +454,10 @@ export function WalletPage({ coupons, onEdit, onDelete, onToggleStatus }: Wallet
                             return (
                                 <Pressable
                                     key={tab.id}
-                                    onPress={() => setActiveTab(tab.id as Tab)}
+                                    onPress={() => {
+                                        setActiveTab(tab.id as Tab);
+                                        setExpiringDaysFilter(null);
+                                    }}
                                     style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 10, backgroundColor: active ? '#252849' : 'transparent' }}
                                 >
                                     <Icon size={16} color={active ? '#6366f1' : '#a0aed4'} style={{ marginBottom: 4 }} />

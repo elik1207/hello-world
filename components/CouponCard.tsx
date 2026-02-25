@@ -106,6 +106,7 @@ export function CouponCard({ coupon, onEdit, onDelete, onToggleStatus, isSelecti
     }
 
     const dimmed = isUsed || isExpired;
+    const isUrgent = !isUsed && !isExpired && daysLeft !== null && daysLeft <= 7;
     const TypeIcon = coupon.type === 'gift_card' ? Gift : coupon.type === 'voucher' ? Ticket : Tag;
 
     return (
@@ -115,9 +116,9 @@ export function CouponCard({ coupon, onEdit, onDelete, onToggleStatus, isSelecti
                 marginBottom: 12,
                 borderRadius: 16,
                 overflow: 'hidden',
-                backgroundColor: '#27305a',
+                backgroundColor: isUrgent ? '#332714' : '#27305a',
                 borderWidth: 1,
-                borderColor: '#3c4270',
+                borderColor: isUrgent ? '#784715' : '#3c4270',
                 shadowColor: accentColor,
                 shadowOffset: { width: 0, height: 2 },
                 shadowOpacity: 0.15,
@@ -129,7 +130,7 @@ export function CouponCard({ coupon, onEdit, onDelete, onToggleStatus, isSelecti
 
             <View style={{ padding: 16, paddingLeft: 20 }}>
                 {!!coupon.imageUrl && (
-                    <View style={{ width: '100%', height: 120, marginBottom: 16, backgroundColor: '#1a1d38', borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#3c4270' }}>
+                    <View style={{ width: '100%', height: 120, marginBottom: 16, backgroundColor: isUrgent ? '#241a0d' : '#1a1d38', borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: isUrgent ? '#5c350e' : '#3c4270' }}>
                         <Image source={{ uri: coupon.imageUrl }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
                     </View>
                 )}
@@ -206,7 +207,7 @@ export function CouponCard({ coupon, onEdit, onDelete, onToggleStatus, isSelecti
                 </View>
 
                 {(!!coupon.sender || !!coupon.event) && (
-                    <View style={{ marginTop: 12, padding: 8, backgroundColor: '#1a1d38', borderRadius: 8, borderWidth: 1, borderColor: '#3c4270', flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                    <View style={{ marginTop: 12, padding: 8, backgroundColor: isUrgent ? '#241a0d' : '#1a1d38', borderRadius: 8, borderWidth: 1, borderColor: isUrgent ? '#5c350e' : '#3c4270', flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
                         {!!coupon.sender && <Text style={{ fontSize: 11, color: '#a0aed4' }}>From: <Text style={{ color: '#dde2f4', fontWeight: '500' }}>{coupon.sender}</Text></Text>}
                         {!!coupon.sender && !!coupon.event && <Text style={{ color: '#64748b', fontSize: 11 }}>•</Text>}
                         {!!coupon.event && <Text style={{ fontSize: 11, color: '#a0aed4' }}>For: <Text style={{ color: '#dde2f4', fontWeight: '500' }}>{coupon.event}</Text></Text>}
@@ -214,7 +215,7 @@ export function CouponCard({ coupon, onEdit, onDelete, onToggleStatus, isSelecti
                 )}
 
                 {!!coupon.barcodeData && (
-                    <View style={{ marginTop: 12, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: '#1a1d38', borderRadius: 8, borderWidth: 1, borderColor: '#3c4270', alignItems: 'center' }}>
+                    <View style={{ marginTop: 12, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: isUrgent ? '#241a0d' : '#1a1d38', borderRadius: 8, borderWidth: 1, borderColor: isUrgent ? '#5c350e' : '#3c4270', alignItems: 'center' }}>
                         <View style={{ flexDirection: 'row', width: '100%', height: 24, justifyContent: 'space-between', marginBottom: 4, opacity: 0.5 }}>
                             {Array.from({ length: 24 }).map((_, i) => (
                                 <View key={i} style={{ flex: 1, backgroundColor: '#a0aed4', opacity: Math.random() > 0.5 ? 1 : 0.3, width: Math.random() * 4 + 1, marginHorizontal: 1 }} />
@@ -224,7 +225,7 @@ export function CouponCard({ coupon, onEdit, onDelete, onToggleStatus, isSelecti
                     </View>
                 )}
 
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#3c4270' }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: isUrgent ? '#5c350e' : '#3c4270' }}>
                     <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
                         <Text style={{ fontSize: 12, color: '#a0aed4' }}>
                             {coupon.expiryDate ? `Exp: ${formatDate(coupon.expiryDate)}` : 'No expiry'}
