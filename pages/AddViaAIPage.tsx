@@ -137,7 +137,7 @@ export function AddViaAIPage({ onSave, onCancel, initialText }: AddViaAIPageProp
         setStep('preview');
     };
 
-    const handleSave = () => {
+    const handleSave = async () => {
         if (!draft || !draft.title) return; // safety
 
         const finalItem: Omit<Coupon, 'id' | 'createdAt' | 'updatedAt' | 'status'> = {
@@ -157,7 +157,7 @@ export function AddViaAIPage({ onSave, onCancel, initialText }: AddViaAIPageProp
         };
 
         try {
-            onSave(finalItem);
+            await onSave(finalItem);
 
             if (flowStartTime && currentRequestId) {
                 const finalFlags = computeQualityFlags(draft, editedFields);

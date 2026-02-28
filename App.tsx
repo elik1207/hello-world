@@ -244,7 +244,7 @@ function App() {
             };
 
             await upsertCoupon(newCoupon, fp);
-            await scheduleCouponReminder(newCoupon);
+            try { await scheduleCouponReminder(newCoupon); } catch (_) { /* notifications not available on web */ }
 
             setCoupons((curr) => [newCoupon, ...curr]);
         }

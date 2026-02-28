@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import * as SQLite from 'expo-sqlite';
 import { Coupon, ItemType, DiscountType, CouponStatus, SavedView, SavedViewPayload } from './types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -5,6 +6,7 @@ import { generateFingerprint } from './fingerprint';
 import { isExpired } from './utils';
 import { trackEvent } from './analytics';
 import { z } from 'zod';
+import { computeMissingFieldCount, computeNeedsReviewFieldCount } from './quality';
 
 export interface ImportReport {
     schemaVersion: number;
@@ -18,7 +20,7 @@ export async function autoExpireCoupons(): Promise<void> {
     const db = await getDb();
 
     // We only mutate 'active' coupons. 'used' is final.
-    const activeCoupons = await db.getAllAsync<{ id: string, expiryDate: string }>('SELECT id, expiryDate FROM coupons WHERE status = ? AND expiryDate IS NOT NULL AND expiryDate != ""', ['active']);
+    const activeCoupons = await db.getAllAsync<{ id: string, expiryDate: string }>("SELECT id, expiryDate FROM coupons WHERE status = ? AND expiryDate IS NOT NULL AND expiryDate != ''", ['active']);
     let expiredCount = 0;
 
     for (const c of activeCoupons) {
@@ -35,8 +37,13 @@ export async function autoExpireCoupons(): Promise<void> {
 
 const DB_NAME = 'wallet.db';
 
+let _dbPromise: ReturnType<typeof SQLite.openDatabaseAsync> | null = null;
+
 export async function getDb() {
-    return SQLite.openDatabaseAsync(DB_NAME);
+    if (!_dbPromise) {
+        _dbPromise = SQLite.openDatabaseAsync(DB_NAME);
+    }
+    return _dbPromise;
 }
 
 export async function initDb(): Promise<void> {
@@ -116,7 +123,7 @@ export async function initDb(): Promise<void> {
         await db.execAsync(`PRAGMA user_version = ${currentVersion}`);
 
         // Backfill quality flags for existing items safely
-        const { computeMissingFieldCount, computeNeedsReviewFieldCount } = await import('./quality');
+        // computeMissingFieldCount/computeNeedsReviewFieldCount imported at top of file
         const existing = await db.getAllAsync<{ id: string, store: string, title: string, discountValue: number, initialValue: number, code: string }>('SELECT id, store, title, discountValue, initialValue, code FROM coupons');
         for (const c of existing) {
             await db.runAsync('UPDATE coupons SET missingFieldCount = ?, needsReviewFieldCount = ? WHERE id = ?', [
@@ -147,6 +154,10 @@ export async function initDb(): Promise<void> {
 }
 
 async function migrateFromAsyncStorage(db: SQLite.SQLiteDatabase) {
+    // Skip migration on web — no legacy AsyncStorage data exists and wa-sqlite
+    // conflicts with the concurrent AsyncStorage reads during migration.
+    if (Platform.OS === 'web') return;
+
     const MIGRATED_FLAG = '@legacy_storage_migrated';
     const hasMigrated = await AsyncStorage.getItem(MIGRATED_FLAG);
     if (hasMigrated === 'true') return;
@@ -291,7 +302,7 @@ export async function isDuplicateIdempotencyKey(key: string): Promise<boolean> {
 
 export async function upsertCoupon(coupon: Coupon, fingerprint?: string): Promise<void> {
     const db = await getDb();
-    const { computeMissingFieldCount, computeNeedsReviewFieldCount } = await import('./quality');
+    // computeMissingFieldCount/computeNeedsReviewFieldCount imported at top of file
 
     const missingFieldCount = computeMissingFieldCount(coupon);
     const needsReviewFieldCount = computeNeedsReviewFieldCount(coupon);
@@ -364,7 +375,7 @@ export async function removeTagFromCoupon(id: string, tagToRemove: string): Prom
 
 export async function getAllTags(): Promise<string[]> {
     const db = await getDb();
-    const rows = await db.getAllAsync<{ tags: string | null }>('SELECT tags FROM coupons WHERE tags IS NOT NULL AND tags != "[]"');
+    const rows = await db.getAllAsync<{ tags: string | null }>("SELECT tags FROM coupons WHERE tags IS NOT NULL AND tags != '[]'");
 
     const allTags = new Set<string>();
     for (const row of rows) {

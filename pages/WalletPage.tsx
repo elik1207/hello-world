@@ -108,16 +108,17 @@ export function WalletPage({ coupons, onEdit, onDelete, onToggleStatus }: Wallet
         try {
             const views = await listSavedViews();
             setSavedViews(views);
-        } catch (e) { console.error('Error fetching views', e); }
+        } catch (e) { /* DB not ready yet, will retry */ }
     }, []);
 
     useEffect(() => {
         fetchCoupons();
     }, [fetchCoupons]);
 
+    // Only fetch saved views once the DB is initialized (coupons loaded from parent)
     useEffect(() => {
-        fetchViews();
-    }, [fetchViews]);
+        if (coupons.length > 0) fetchViews();
+    }, [coupons.length, fetchViews]);
 
     const [kpiData, setKpiData] = useState({
         totalTrappedValue: 0,

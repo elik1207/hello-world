@@ -16,13 +16,11 @@ interface SettingsPageProps {
 
 export function SettingsPage({ onExport, onImport, onClear }: SettingsPageProps) {
     const [remindersEnabled, setRemindersEnabled] = useState(true);
-    const [remindDaysBefore, setRemindDaysBefore] = useState(3);
     const [clipboardEnabled, setClipboardEnabled] = useState(false);
 
     useEffect(() => {
         getReminderSettings().then(cfg => {
             setRemindersEnabled(cfg.enabled);
-            setRemindDaysBefore(cfg.daysBefore);
         });
         AsyncStorage.getItem(CLIPBOARD_ENABLED_KEY).then(val => {
             setClipboardEnabled(val === 'true');
@@ -36,12 +34,7 @@ export function SettingsPage({ onExport, onImport, onClear }: SettingsPageProps)
 
     const toggleReminders = async (val: boolean) => {
         setRemindersEnabled(val);
-        await setReminderSettings(val, remindDaysBefore);
-    };
-
-    const changeDays = async (days: number) => {
-        setRemindDaysBefore(days);
-        await setReminderSettings(remindersEnabled, days);
+        await setReminderSettings(val);
     };
 
     function SettingRow({
@@ -173,28 +166,12 @@ export function SettingsPage({ onExport, onImport, onClear }: SettingsPageProps)
 
                     {remindersEnabled && (
                         <View style={{ padding: 16 }}>
-                            <Text style={{ fontSize: 13, color: '#dde2f4', fontWeight: '500', marginBottom: 12 }}>Remind me prior to expiration</Text>
-                            <View style={{ flexDirection: 'row', gap: 8 }}>
-                                {[1, 3, 7, 14].map(days => (
-                                    <Pressable
-                                        key={days}
-                                        onPress={() => changeDays(days)}
-                                        style={{
-                                            flex: 1,
-                                            paddingVertical: 8,
-                                            alignItems: 'center',
-                                            backgroundColor: remindDaysBefore === days ? '#6366f1' : '#1a1d38',
-                                            borderRadius: 8,
-                                            borderWidth: 1,
-                                            borderColor: remindDaysBefore === days ? '#8b5cf6' : '#3c4270',
-                                        }}
-                                    >
-                                        <Text style={{ fontSize: 13, fontWeight: '600', color: remindDaysBefore === days ? '#fff' : '#a0aed4' }}>
-                                            {days}d
-                                        </Text>
-                                    </Pressable>
-                                ))}
-                            </View>
+                            <Text style={{ fontSize: 13, color: '#a0aed4', lineHeight: 18 }}>
+                                התראות אוטומטיות לפי זמן עד תפוגה:{"\n"}
+                                • שוברים ארוכי טווח — 6 חודשים + חודש לפני{"\n"}
+                                • שוברים בינוניים — חודש + שבוע לפני{"\n"}
+                                • שוברים קצרי טווח — שבוע + 3 ימים לפני
+                            </Text>
                         </View>
                     )}
                 </View>

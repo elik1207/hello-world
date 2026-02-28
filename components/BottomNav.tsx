@@ -52,8 +52,8 @@ function NavTab({
     };
 
     return (
-        <Pressable onPress={handlePress} className="flex-1 items-center py-2">
-            <Animated.View style={animStyle} className="items-center gap-1">
+        <Pressable onPress={handlePress} style={{ flex: 1, alignItems: 'center', paddingVertical: 8 }}>
+            <Animated.View style={[animStyle, { alignItems: 'center', gap: 4 }]}>
                 {active ? (
                     <LinearGradient
                         colors={['#6366f1', '#8b5cf6']}
@@ -68,7 +68,7 @@ function NavTab({
                         <Icon size={20} color="#ffffff" strokeWidth={2.2} />
                     </LinearGradient>
                 ) : (
-                    <View className="p-2 mb-0.5">
+                    <View style={{ padding: 8, marginBottom: 2 }}>
                         <Icon size={20} color="#a0aed4" strokeWidth={1.75} />
                     </View>
                 )}

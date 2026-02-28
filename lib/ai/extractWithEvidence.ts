@@ -245,7 +245,26 @@ function deriveTitleFromStore(storeField: FieldResult<string>): FieldResult<stri
 }
 
 function extractCode(text: string, issues: string[]): FieldResult<string> {
-    // Priority 1: Code with keyword indicator
+    // Priority 0: Multiline pattern — Hebrew keyword phrase followed by code on next line
+    // Handles messages like:
+    //   "את קוד שובר BuyMe\n9376-1193-5341-4936"
+    const multilineCodeRegex = /(?:קוד שובר|מספר שובר|קוד קופון|קוד הטבה|קוד)[\s\S]*?\n\s*(\d{4}[\-\s]\d{4}[\-\s]\d{4}[\-\s]\d{4})/i;
+    const multilineMatch = text.match(multilineCodeRegex);
+
+    if (multilineMatch && multilineMatch[1] && multilineMatch.index !== undefined) {
+        const code = multilineMatch[1].replace(/\s/g, '-').trim();
+        const codeStart = multilineMatch.index + multilineMatch[0].length - multilineMatch[1].length;
+        const codeEnd = codeStart + multilineMatch[1].length;
+
+        return {
+            value: code,
+            confidence: 'high',
+            evidence: [ev(codeStart, codeEnd, multilineMatch[1], 'code_multiline_hebrew')],
+            issues: [],
+        };
+    }
+
+    // Priority 1: Code with keyword indicator on the SAME line
     const codeIndicatorRegex = /(?:code|קוד|קופון|מספר שובר|שובר|voucher)[\s:]*([A-Za-z0-9-]{4,25})/i;
     const codeMatch = text.match(codeIndicatorRegex);
 
@@ -272,7 +291,21 @@ function extractCode(text: string, issues: string[]): FieldResult<string> {
         }
     }
 
-    // Priority 2: Isolated code-like strings
+    // Priority 2: Isolated dash-separated code patterns (e.g., 9376-1193-5341-4936)
+    const dashCodeRegex = /\b(\d{4}[\-]\d{4}[\-]\d{4}[\-]\d{4})\b/g;
+    const dashMatches = [...text.matchAll(dashCodeRegex)];
+
+    if (dashMatches.length > 0) {
+        const match = dashMatches[0];
+        return {
+            value: match[1],
+            confidence: 'high',
+            evidence: [ev(match.index!, match.index! + match[0].length, match[0], 'code_dash_pattern')],
+            issues: [],
+        };
+    }
+
+    // Priority 3: Other isolated code-like strings
     const isolatedCodeRegex = /[A-Z0-9]{2,}(?:-[A-Z0-9]{2,}){1,}/g;
     const isolatedMatches = [...text.matchAll(isolatedCodeRegex)];
 

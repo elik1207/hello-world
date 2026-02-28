@@ -102,7 +102,7 @@ export function validateExtractionResult(
     result: ExtractionResult,
     originalText: string,
 ): ExtractionResult {
-    const validated = structuredClone(result);
+    const validated = JSON.parse(JSON.stringify(result));
     const summaryIssues = [...validated.summary.issues];
 
     // Validate all evidence ranges
@@ -114,7 +114,7 @@ export function validateExtractionResult(
                 if (evIssues.length > 0) {
                     field.issues = [...(field.issues || []), ...evIssues];
                     field.confidence = 'low';
-                    summaryIssues.push(`${fieldName}: ${evIssues.join(', ')}`);
+                    summaryIssues.push(`${String(fieldName)}: ${evIssues.join(', ')}`);
                 }
             }
         }
